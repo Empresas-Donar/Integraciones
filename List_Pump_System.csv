@@ -1,0 +1,2 @@
+id,name,farmId,parallelIrrigation,minimumSchedulingTimeBuffer,allowPumpSelection,pumpIds,peakHourEnabled,mode
+13886,Equipo 1-2-3,14245,True,3,True,"[62809, 62810, 62811]",False,Auto
