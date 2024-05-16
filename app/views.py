@@ -1,0 +1,1 @@
+# maneja las rutas y las vistas de Flask

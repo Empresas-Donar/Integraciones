@@ -1,0 +1,1 @@
+# define los modelos de SQLAlchemy para PostgreSQL
