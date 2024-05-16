@@ -1,0 +1,1 @@
+# lógica para interactuar con PostgreSQL
