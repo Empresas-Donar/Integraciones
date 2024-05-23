@@ -1,1 +1,0 @@
-# migraciones con flask
