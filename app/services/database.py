@@ -12,18 +12,14 @@ def manage_data(processed_data, data_type):
         'zones': WC_Farms_Zones,
         'irrigations': WCFarmsIrrigation
     }
-
     model = model_mapping[data_type]
     existing_ids = set(id[0] for id in db.session.query(model.id).all())  
-
     data_dict = processed_data.to_dict(orient='records')
     new_data = []
-
     for item in data_dict:
         if 'id' in item and item['id'] not in existing_ids:
             instance = model(**item)
             db.session.add(instance)  
-
     try:
         db.session.commit()  
         print(f"{len(new_data)} nuevos registros insertados en {data_type}.")
@@ -33,15 +29,3 @@ def manage_data(processed_data, data_type):
     except SQLAlchemyError as e:
         db.session.rollback()  
         print(f"Error al insertar en la base de datos para {data_type}: {e}")
-
-  
-
-
-
-
-
-
-
-
-
-
