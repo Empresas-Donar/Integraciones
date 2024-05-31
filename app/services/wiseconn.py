@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Configure endpoints and call cleanup functions.
 
 import requests
@@ -48,6 +47,3 @@ def run_fetch_process():
             processed_data = endpoints_config[key]["process_function"](data)
             results.append((processed_data, key))  
     return results
-=======
-# lógica para interactuar con la API de Wiseconn
->>>>>>> a81d73cc40c41e7463b3eddd17f30fdc351e2cc2
