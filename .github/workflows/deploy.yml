@@ -11,12 +11,15 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.5.3
+      uses: webfactory/ssh-agent@v0.6.0
       with:
         ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+    - name: Ensure deployment directory exists
+      run: ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 'mkdir -p /home/ubuntu/integracionwiseconn'
 
     - name: Copy files via SCP
       run: scp -r -o StrictHostKeyChecking=no ./* ubuntu@18.117.28.235:/home/ubuntu/integracionwiseconn
