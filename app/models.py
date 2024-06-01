@@ -5,10 +5,8 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import pytz
 
-
 class WC_Farms_Zones(db.Model):
     __tablename__ = 'wc_farms_zones'
-
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text)
     description = db.Column(db.Text)
@@ -41,10 +39,8 @@ class WC_Farms_Zones(db.Model):
     northeast_lng = db.Column(db.Float)
     northeast_lat = db.Column(db.Float)
 
-
 class WCFarmsIrrigation(db.Model):
     __tablename__ = 'wc_farms_irrigation'
-
     id = db.Column(db.Integer, primary_key=True)
     inittime = db.Column(db.DateTime)
     endtime = db.Column(db.DateTime)
@@ -66,7 +62,3 @@ class ExecutionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     status = db.Column(db.String(50))
     date = db.Column(db.DateTime(timezone = True), default=lambda: datetime.now(pytz.timezone('America/Santiago')))
-
-
-
-
