@@ -11,9 +11,7 @@ from app.models import ExecutionLog
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.StreamHandler()])
-
 logging.getLogger('apscheduler').setLevel(logging.DEBUG)
-
 app = create_app()
 
 def scheduled_job():
@@ -30,16 +28,13 @@ def scheduled_job():
             log = ExecutionLog(status=status, date=datetime.utcnow())
             db.session.add(log)
             db.session.commit()
-
 scheduler = BackgroundScheduler()
 
 print("Programando tareas...", flush=True)
-
 scheduler.add_job(scheduled_job, 'cron', hour='07', minute='0')
 scheduler.add_job(scheduled_job, 'cron', hour='12', minute='0')
 scheduler.add_job(scheduled_job, 'cron', hour='18', minute='0')
 scheduler.add_job(scheduled_job, 'cron', hour='22', minute='0')
-
 print("Tareas programadas. Scheduler iniciará.", flush=True)
 
 scheduler.start()
