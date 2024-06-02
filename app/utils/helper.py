@@ -1,1 +1,0 @@
-# funciones auxiliares, como convertidores de datos
