@@ -1,4 +1,4 @@
-# Configure endpoints and call cleanup functions.
+# Controls access to the wiseconn and ubibot APIs and returns the result of this access and call cleanup functions.
 
 import requests
 import datetime
@@ -15,7 +15,6 @@ endpoints_config = {
         "process_function": process_data_irrigation
     }
 }
-
 api_key = os.getenv('API_KEY')  
 
 def fetch_data(endpoint_key):
@@ -37,9 +36,22 @@ def fetch_data(endpoint_key):
 
 def run_fetch_process():
     results = []
-    for key in endpoints_config:
-        data = fetch_data(key)
-        if data:  
-            processed_data = endpoints_config[key]["process_function"](data)
-            results.append((processed_data, key))  
-    return results
+    status_wiseconn = "Success"
+    status_ubibot = "Failed"
+    try:
+        for key in endpoints_config:
+            data = fetch_data(key)
+            if data:  
+                processed_data = endpoints_config[key]["process_function"](data)
+                results.append((processed_data, key))  
+    except Exception as e:
+        status_wiseconn = f'Failed: {e}'
+    try:
+        response = requests.get("https://api.ubibot.com/status")
+        if response.status_code == 200:
+            status_ubibot = "Success"
+        else:
+            status_ubibot = "Failed"
+    except Exception as e:
+        status_ubibot = f'Failed: {e}'
+    return results, status_wiseconn, status_ubibot
