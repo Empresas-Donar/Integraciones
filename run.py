@@ -5,14 +5,14 @@ from app.services.wiseconn import run_fetch_process
 from app.services.database import manage_data
 
 app = create_app()
-
 def main():
     with app.app_context():
         print("Inicio del proceso de datos...", flush=True)
-        processed_data_list = run_fetch_process()
-        for data, data_type in processed_data_list:
-            if data is not None:
-                manage_data(data, data_type)
+        processed_data_list, status_wiseconn, status_ubibot = run_fetch_process()
+        for data in processed_data_list:
+            if data:
+                data_content, data_type = data
+                manage_data(data_content, data_type)
                 print(f"Datos procesados para {data_type}", flush=True)
 
 if __name__ == "__main__":
