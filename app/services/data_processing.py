@@ -26,3 +26,13 @@ def process_data_irrigation(data_wc_farms_irrigation):
        'nutricontrol', 'scheduledPhControls'], axis = 1, inplace = True)
     df_wc_farms_irrigation.rename(columns = {"volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "theoricalFlow m3/h": "theoreticalflow_m3_h"} , inplace= True)
     return df_wc_farms_irrigation
+
+def process_data_real_irrigation(data_wc_farms_realirrigation):
+    df_wc_farms_realirrigation = pd.DataFrame(data_wc_farms_realirrigation)
+    df_wc_farms_realirrigation[["volume m3" , "volume1", "volume2"]] = df_wc_farms_realirrigation['volume'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[["precipitation mm" , "precipitation2", "precipitation3"]] = df_wc_farms_realirrigation['precipitation'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[["flow m3/h" , "th2", "th3"]] = df_wc_farms_realirrigation['flow'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[['instantaneousFlow m3/h' , "instantaneousFlow1", "instantaneousFlow2"]] = df_wc_farms_realirrigation['instantaneousFlow'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3","instantaneousFlow1", "instantaneousFlow2", "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", "stoppedByUser", "fertigations", "phControl", "measures", "alarms", "hydraulics"],axis = 1, inplace = True)
+    df_wc_farms_realirrigation.rename(columns = {"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id", "volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "flow m3/h": "flow_m3_h", "instantaneousFlow m3/h": "instantaneous_flow_m3_h"}, inplace = True)
+    return df_wc_farms_realirrigation
