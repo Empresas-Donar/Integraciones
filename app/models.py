@@ -63,3 +63,17 @@ class ExecutionLog(db.Model):
     status_wiseconn = db.Column(db.String(50))
     status_ubibot = db.Column(db.String(50))
     date = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.timezone('America/Santiago')))
+
+class WCFarmsRealIrrigation(db.Model):
+    __tablename__ = 'wc_farms_realirrigation'
+    id = db.Column(db.Integer, primary_key=True)
+    init_time = db.Column(db.DateTime)
+    end_time = db.Column(db.DateTime)
+    zone_id = db.Column(db.Integer)
+    status = db.Column(db.Text)
+    pump_system_id = db.Column(db.Integer)
+    scheduled_irrigation_id = db.Column(db.Integer)
+    volume_m3 = db.Column(db.Float)
+    precipitation_mm = db.Column(db.Float)
+    flow_m3_h = db.Column(db.Float)
+    instantaneous_flow_m3_h = db.Column(db.Float)    
