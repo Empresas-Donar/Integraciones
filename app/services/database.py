@@ -1,5 +1,5 @@
 # Map models and data and upload new information to the database
-from app.models import WC_Farms_Zones, WCFarmsIrrigation
+from app.models import WC_Farms_Zones, WCFarmsIrrigation, WCFarmsRealIrrigation
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
@@ -8,7 +8,8 @@ import json
 def manage_data(processed_data, data_type):
     model_mapping = {
         'zones': WC_Farms_Zones,
-        'irrigations': WCFarmsIrrigation
+        'irrigations': WCFarmsIrrigation,
+        'realirrigations': WCFarmsRealIrrigation
     }
     model = model_mapping[data_type]
     existing_ids = set(id[0] for id in db.session.query(model.id).all())  

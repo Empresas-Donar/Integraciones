@@ -2,7 +2,7 @@
 
 import requests
 import datetime
-from .data_processing import process_data_wc_farms_zones, process_data_irrigation
+from .data_processing import process_data_wc_farms_zones, process_data_irrigation, process_data_real_irrigation
 import os
 
 endpoints_config = {
@@ -13,6 +13,10 @@ endpoints_config = {
     "irrigations": {
         "url": "https://api.wiseconn.com/farms/14245/irrigations",
         "process_function": process_data_irrigation
+    },
+    'realirrigations': {
+        "url": "https://api.wiseconn.com/farms/14245/realIrrigations",
+        "process_function": process_data_real_irrigation
     }
 }
 api_key = os.getenv('API_KEY')  
@@ -23,7 +27,7 @@ def fetch_data(endpoint_key):
     config = endpoints_config[endpoint_key]
     headers = {"api_key": api_key}  
     params = config.get("params", {})
-    if endpoint_key == "irrigations":
+    if endpoint_key in ["irrigations",'realirrigations'] :
         params["initTime"] = yesterday.strftime("%Y-%m-%d")
         params["endTime"] = today.strftime("%Y-%m-%d")
     response = requests.get(config["url"], headers=headers, params=params)
