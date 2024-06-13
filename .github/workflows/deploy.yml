@@ -24,14 +24,13 @@ jobs:
     - name: Copy files via SCP
       run: scp -r -o StrictHostKeyChecking=no ./* ubuntu@18.117.28.235:/home/ubuntu/integracionwiseconn
 
-    - name: SSH and run task scheduler
+    - name: SSH and restart service
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 << 'EOF'
         cd /home/ubuntu/integracionwiseconn
-        # Si usas un entorno virtual:
+        # Asegúrate de que el entorno virtual está activado
         source venv/bin/activate
-        # Mata cualquier instancia en ejecución del task_scheduler.py
-        pkill -f 'python3 task_scheduler.py'
-        # Ejecuta task_scheduler.py
-        nohup python3 task_scheduler.py &
+        # Reinicia el servicio systemd
+        sudo systemctl restart integracionwiseconn.service
+        exit
         EOF
