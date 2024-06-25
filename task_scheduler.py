@@ -7,6 +7,7 @@ import time
 from app import create_app, db
 from app.models import ExecutionLog
 from app.services.wiseconn import run_fetch_process
+from app.services.ubibot import runubi_fetch_process
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -14,9 +15,12 @@ logging.basicConfig(level=logging.INFO,
 logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 app = create_app()
+
 def scheduled_job():
     with app.app_context():
-        results, status_wiseconn, status_ubibot = run_fetch_process()
+        results_wiseconn, status_wiseconn = run_fetch_process()
+        results_ubibot, status_ubibot = runubi_fetch_process()
+        
         log = ExecutionLog(
             status_wiseconn=status_wiseconn,
             status_ubibot=status_ubibot,
@@ -25,8 +29,8 @@ def scheduled_job():
         db.session.add(log)
         db.session.commit()
         logging.info(f"Registro añadido con estados - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
-
 scheduler = BackgroundScheduler()
+
 def schedule_tasks():
     scheduler.add_job(scheduled_job, 'cron', hour='07', minute='00')
     scheduler.add_job(scheduled_job, 'cron', hour='12', minute='00')
