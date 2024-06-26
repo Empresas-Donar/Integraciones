@@ -18,6 +18,11 @@ Detailed records: It maintains detailed records of all irrigation operations, al
 
 The application is an agricultural irrigation management solution that combines various technologies to provide efficient management of cultivation zones and their irrigation needs. It uses a clean and well-defined architecture with separate modules for different responsibilities, facilitating scalability and maintenance.
 
+# Ubibot Integration
+
+The Farm Irrigation Management System also integrates with the Ubibot API to further enhance the precision and efficiency of irrigation management. Ubibot provides real-time environmental data that can be used to make more informed irrigation decisions. This includes data from sensors monitoring temperature, ambient temperature, radiation, humidity, ambient humidity, soil conductivity, and more.
+
+
 # Who maintains and contributes to the project?
 The project is maintained and developed by the following contributors:
 
