@@ -1,6 +1,7 @@
 # Data processing and cleaning for each table
 
 import pandas as pd
+import uuid
 def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones = pd.DataFrame(data_wc_farms_zones)
     df_wc_farms_zones[['irrigation_max', 'irrigation_min', 'irrigation_avg', 'irrigation_std']] = df_wc_farms_zones['irrigationScheduleStats'].apply(pd.Series)[['max', 'min', 'avg', 'std']]
@@ -36,3 +37,55 @@ def process_data_real_irrigation(data_wc_farms_realirrigation):
     df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3","instantaneousFlow1", "instantaneousFlow2", "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", "stoppedByUser", "fertigations", "phControl", "measures", "alarms", "hydraulics"],axis = 1, inplace = True)
     df_wc_farms_realirrigation.rename(columns = {"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id", "volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "flow m3/h": "flow_m3_h", "instantaneousFlow m3/h": "instantaneous_flow_m3_h"}, inplace = True)
     return df_wc_farms_realirrigation
+
+def clean_channel_data(data_ubi_channels):
+    if isinstance(data_ubi_channels, dict):
+        data_ubi_channels = pd.DataFrame(data_ubi_channels['channels'])
+    elif isinstance(data_ubi_channels, list):
+        data_ubi_channels = pd.DataFrame(data_ubi_channels)
+    columns_to_drop = [
+        'public_flag', 'tags', 'url', 'metadata', 'description', 'traffic_out',
+        'traffic_in', 'status', 'timezone', 'created_at', 'updated_at', 'usage',
+        'last_entry_id', 'last_entry_date', 'product_id', 'device_id',
+        'channel_icon', 'last_ip', 'attached_at', 'firmware', 'full_dump',
+        'activated_at', 'serial', 'mac_address', 'full_dump_limit', 'cali',
+        'size_out', 'size_storage', 'plan_code', 'allow_channel_fields',
+        'plan_start', 'plan_end', 'bill_start', 'bill_end', 'last_values',
+        'vconfig', 'vpref', 'sensors', 'sensors_mapping', 'hub_entries',
+        'max_fields', 'battery', 'vpref_from', 'net', 'c_icon_base',
+        'status_date', 'full_serial', 'triggering_rules'
+    ]
+    data_ubi_channels.drop(columns=columns_to_drop, axis=1, inplace=True)
+    data_ubi_channels['id'] = range(1, len(data_ubi_channels) + 1)
+    return data_ubi_channels
+
+def clean_channel_data_summary(data_ubi_summary, channel_id):
+    if isinstance(data_ubi_summary, list):
+        data_ubi_summary = pd.json_normalize(data_ubi_summary)
+    elif isinstance(data_ubi_summary, dict):
+        data_ubi_summary = pd.DataFrame([data_ubi_summary])
+    if 'id' not in data_ubi_summary.columns:
+        data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]
+    data_ubi_summary['channel_id'] = channel_id
+    data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
+    if 'created_at' not in data_ubi_summary.columns:
+        data_ubi_summary['created_at'] = None
+    expected_fields = [f'field{n}' for n in range(1, 16)]
+    metrics = ['avg', 'count', 'min', 'max']
+    for field in expected_fields:
+        if field not in ['field4', 'field5']:
+            if field not in data_ubi_summary.columns:
+                for metric in metrics:
+                    column_name = f'{field}_{metric}'
+                    if column_name not in data_ubi_summary.columns:
+                        data_ubi_summary[column_name] = None
+    columns_to_drop = []
+    for field in expected_fields:
+        if field in ['field4', 'field5']:
+            for metric in ['sum', 'avg', 'count', 'sd', 'min', 'max']:
+                columns_to_drop.append(f'{field}_{metric}')
+        else:
+            for metric in ['sum', 'sd']:
+                columns_to_drop.append(f'{field}_{metric}')
+    data_ubi_summary.drop(columns=[col for col in columns_to_drop if col in data_ubi_summary.columns], inplace=True)
+    return data_ubi_summary
