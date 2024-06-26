@@ -7,27 +7,7 @@ import pandas as pd
 from app import db
 import json
 import uuid
-
-def is_valid_integer(value):
-    try:
-        if value is None or pd.isna(value):
-            return False
-        int_value = int(value)
-        return True
-    except (ValueError, OverflowError):
-        return False
-
-def clean_data(data_dict):
-    cleaned_data = []
-    for item in data_dict:
-        cleaned_item = {}
-        for key, value in item.items():
-            if pd.isna(value):
-                cleaned_item[key] = None
-            else:
-                cleaned_item[key] = value
-        cleaned_data.append(cleaned_item)
-    return cleaned_data
+from app.services.utils import is_valid_integer, clean_data
 
 def manage_data_ubi(processed_data, data_type):
     model_mapping = {
