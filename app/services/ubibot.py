@@ -73,7 +73,7 @@ def fetch_data_ubi(endpoint_key):
         yesterday = today - timedelta(days=1)
         params = {
             "account_key": account_key,
-            "results": 40,
+            "results": 10,
             "start": yesterday.strftime('%Y-%m-%d %H:%M:%S'),
             "end": today.strftime('%Y-%m-%d %H:%M:%S')
         }

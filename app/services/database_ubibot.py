@@ -1,6 +1,6 @@
 # Map models and data and upload new information of Ubibot API to the database
 
-from app.models import UbibotChannels, UbibotSummary
+from app.models import UbibotChannels, UbibotSummary, UbibotFields
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError, DataError
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
@@ -8,6 +8,7 @@ from app import db
 import json
 import uuid
 from app.services.utils import is_valid_integer, clean_data
+from datetime import datetime
 
 def manage_data_ubi(processed_data, data_type):
     model_mapping = {
@@ -20,14 +21,20 @@ def manage_data_ubi(processed_data, data_type):
         return
     model = model_mapping[base_data_type]
     if base_data_type == 'channels':
-        existing_ids = set(id[0] for id in db.session.query(model.id).all())
+        existing_ids = {id[0]: id for id in db.session.query(model.id).all()}
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
+        updated_data = 0
+        
         for item in data_dict:
-            if 'id' in item and item['id'] not in existing_ids:
-                instance = model(**item)
-                db.session.add(instance)
-                new_data.append(item)
+            if 'id' in item:
+                if item['id'] in existing_ids:
+                    db.session.query(model).filter(model.id == item['id']).update(item)
+                    updated_data += 1
+                else:
+                    instance = model(**item)
+                    db.session.add(instance)
+                    new_data.append(item)
         try:
             db.session.commit()
             print(f"{len(new_data)} nuevos registros insertados en {base_data_type}.")
@@ -45,9 +52,6 @@ def manage_data_ubi(processed_data, data_type):
             if not is_valid_integer(item['channel_id']):
                 print(f"Invalid channel_id: {item['channel_id']}")
                 continue
-            for field in ['field1_count', 'field2_count', 'field3_count', 'field6_count', 'field9_count', 'field10_count']:
-                if not is_valid_integer(item.get(field)):
-                    item[field] = None
             if 'id' not in item or not item['id']:
                 item['id'] = uuid.uuid4().hex
             channel_id = item['channel_id']
@@ -70,3 +74,58 @@ def manage_data_ubi(processed_data, data_type):
         except SQLAlchemyError as e:
             db.session.rollback()
             print(f"Error al insertar en la base de datos para {base_data_type}: {e}")
+
+def manage_fields_ubi(df):
+    # Filtrar filas con valores nulos en 'channel_id' o 'created_at'
+    df = df.dropna(subset=['channel_id', 'created_at'])
+
+    # Verificar el rango de 'channel_id' (máximo 5 dígitos)
+    df = df[df['channel_id'] < 100000]
+
+    # Filtrar filas donde 'count' sea mayor que 24
+    df = df[df['count'].fillna(0).apply(lambda x: x <= 24)]
+
+    # Reemplazar NaN en 'avg', 'count', 'min', 'max' con valores adecuados
+    df['avg'] = df['avg'].fillna(0)
+    df['count'] = df['count'].fillna(0)
+    df['min'] = df['min'].fillna(0)
+    df['max'] = df['max'].fillna(0)
+
+    # Convertir DataFrame a lista de diccionarios
+    data_dicts = df.to_dict(orient='records')
+
+    records_to_add = []
+    for row in data_dicts:
+        # Verificar si ya existe un registro con el mismo channel_id, created_at y name
+        existing_record = UbibotFields.query.filter_by(
+            channel_id=row['channel_id'],
+            created_at=row['created_at'],
+            name=row['name']
+        ).first()
+
+        if not existing_record:
+            # Crear una instancia de UbibotFields si no existe un registro duplicado
+            new_record = UbibotFields(
+                summary_id=row['summary_id'],
+                channel_id=row['channel_id'],
+                created_at=row['created_at'],
+                date=row['date'],
+                hour=row['hour'],
+                name=row['name'],
+                avg=row['avg'],
+                count=row['count'],
+                min=row['min'],
+                max=row['max']
+            )
+            records_to_add.append(new_record)
+
+
+    if records_to_add:
+        try:
+            # Insertar los registros no duplicados en la base de datos
+            db.session.bulk_save_objects(records_to_add)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error inserting records: {e}")
+
