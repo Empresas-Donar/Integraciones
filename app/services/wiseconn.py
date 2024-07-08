@@ -58,4 +58,4 @@ def run_fetch_process():
             status_ubibot = "Failed"
     except Exception as e:
         status_ubibot = f'Failed: {e}'
-    return results, status_wiseconn, status_ubibot
+    return results, status_wiseconn
