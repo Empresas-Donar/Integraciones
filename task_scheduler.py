@@ -1,34 +1,21 @@
-# Schedule application executions and save the data of these executions
-
 import logging
+import subprocess
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import time
-from app import create_app, db
-from app.models import ExecutionLog
-from app.services.wiseconn import run_fetch_process
-from app.services.ubibot import runubi_fetch_process
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.StreamHandler()])
 logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
-app = create_app()
-
 def scheduled_job():
-    with app.app_context():
-        results_wiseconn, status_wiseconn = run_fetch_process()
-        results_ubibot, status_ubibot = runubi_fetch_process()
-        
-        log = ExecutionLog(
-            status_wiseconn=status_wiseconn,
-            status_ubibot=status_ubibot,
-            date=datetime.utcnow()
-        )
-        db.session.add(log)
-        db.session.commit()
-        logging.info(f"Registro añadido con estados - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
+    logging.info("Ejecutando run.py...")
+    result = subprocess.run(["python", "run.py"], capture_output=True, text=True)
+    logging.info(f"Salida de run.py: {result.stdout}")
+    if result.stderr:
+        logging.error(f"Errores de run.py: {result.stderr}")
+
 scheduler = BackgroundScheduler()
 
 def schedule_tasks():
@@ -49,3 +36,4 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         print("Scheduler detenido.", flush=True)
+
