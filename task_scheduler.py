@@ -11,7 +11,7 @@ logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 def scheduled_job():
     logging.info("Ejecutando run.py...")
-    result = subprocess.run(["python", "run.py"], capture_output=True, text=True)
+    result = subprocess.run(["python3", "run.py"], capture_output=True, text=True)
     logging.info(f"Salida de run.py: {result.stdout}")
     if result.stderr:
         logging.error(f"Errores de run.py: {result.stderr}")
