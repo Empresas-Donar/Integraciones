@@ -20,21 +20,17 @@ def manage_data_ubi(processed_data, data_type):
         print(f"Unknown data type: {base_data_type}")
         return
     model = model_mapping[base_data_type]
+
     if base_data_type == 'channels':
-        existing_ids = {id[0]: id for id in db.session.query(model.id).all()}
+        db.session.query(model).delete()
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
-        updated_data = 0
-        
+
         for item in data_dict:
-            if 'id' in item:
-                if item['id'] in existing_ids:
-                    db.session.query(model).filter(model.id == item['id']).update(item)
-                    updated_data += 1
-                else:
-                    instance = model(**item)
-                    db.session.add(instance)
-                    new_data.append(item)
+            instance = model(**item)
+            db.session.add(instance)
+            new_data.append(item)
+        
         try:
             db.session.commit()
             print(f"{len(new_data)} nuevos registros insertados en {base_data_type}.")
@@ -44,6 +40,7 @@ def manage_data_ubi(processed_data, data_type):
         except SQLAlchemyError as e:
             db.session.rollback()
             print(f"Error al insertar en la base de datos para {base_data_type}: {e}")
+
     elif base_data_type == 'summary':
         data_dict = processed_data.to_dict(orient='records')
         cleaned_data_dict = clean_data(data_dict) 
@@ -76,27 +73,19 @@ def manage_data_ubi(processed_data, data_type):
             print(f"Error al insertar en la base de datos para {base_data_type}: {e}")
 
 def manage_fields_ubi(df):
-    # Filtrar filas con valores nulos en 'channel_id' o 'created_at'
     df = df.dropna(subset=['channel_id', 'created_at'])
-
-    # Verificar el rango de 'channel_id' (máximo 5 dígitos)
     df = df[df['channel_id'] < 100000]
-
-    # Filtrar filas donde 'count' sea mayor que 24
     df = df[df['count'].fillna(0).apply(lambda x: x <= 24)]
 
-    # Reemplazar NaN en 'avg', 'count', 'min', 'max' con valores adecuados
     df['avg'] = df['avg'].fillna(0)
     df['count'] = df['count'].fillna(0)
     df['min'] = df['min'].fillna(0)
     df['max'] = df['max'].fillna(0)
 
-    # Convertir DataFrame a lista de diccionarios
     data_dicts = df.to_dict(orient='records')
 
     records_to_add = []
     for row in data_dicts:
-        # Verificar si ya existe un registro con el mismo channel_id, created_at y name
         existing_record = UbibotFields.query.filter_by(
             channel_id=row['channel_id'],
             created_at=row['created_at'],
@@ -104,7 +93,6 @@ def manage_fields_ubi(df):
         ).first()
 
         if not existing_record:
-            # Crear una instancia de UbibotFields si no existe un registro duplicado
             new_record = UbibotFields(
                 summary_id=row['summary_id'],
                 channel_id=row['channel_id'],
@@ -119,13 +107,10 @@ def manage_fields_ubi(df):
             )
             records_to_add.append(new_record)
 
-
     if records_to_add:
         try:
-            # Insertar los registros no duplicados en la base de datos
             db.session.bulk_save_objects(records_to_add)
             db.session.commit()
         except Exception as e:
             db.session.rollback()
             print(f"Error inserting records: {e}")
-
