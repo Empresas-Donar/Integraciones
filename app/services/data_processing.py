@@ -20,6 +20,9 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones['northEast_lat'] = df_wc_farms_zones['northEast'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
     df_wc_farms_zones.drop(["bounds", "southWest", "northEast", "polygon" , "areaUnit", "unitTheoreticalFlow", "metadata", "BFPressureId", "onlyMonitoring", "allowPumpSelection"], axis = 1, inplace = True)
     df_wc_farms_zones.rename(columns = {"area" : "area_m2", "theoreticalFlow" : "theoreticalflowm3h", "farmId": "farmid", "pumpSystemId": "pumpsystemid", "humidityRetention": "humidityretention", "criticalPoint1": "criticalpoint1", "criticalPoint2": "criticalpoint2", "criticalPoint3": "criticalpoint3", "criticalPoint4": "criticalpoint4", "soilMode": "soilmode", "pumpIds": "pumpids", "predefinedPumps": "predefinedpumps", "southWest_lng": "southwest_lng", "southWest_lat": "southwest_lat", "northEast_lng": "northeast_lng", "northEast_lat": "northeast_lat"}, inplace = True)
+    df_wc_farms_zones['created_at'] = pd.Timestamp.now()
+    df_wc_farms_zones['date'] = df_wc_farms_zones['created_at'].dt.date
+    df_wc_farms_zones['hour'] = df_wc_farms_zones['created_at'].dt.time
     return df_wc_farms_zones
 def process_data_irrigation(data_wc_farms_irrigation):
     df_wc_farms_irrigation = pd.DataFrame(data_wc_farms_irrigation)
@@ -31,6 +34,10 @@ def process_data_irrigation(data_wc_farms_irrigation):
     df_wc_farms_irrigation.drop(["programmedByUser", "nutrients", 'scheduledFertigations',
        'nutricontrol', 'scheduledPhControls'], axis = 1, inplace = True)
     df_wc_farms_irrigation.rename(columns = {"volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "theoricalFlow m3/h": "theoreticalflow_m3_h"} , inplace= True)
+    df_wc_farms_irrigation['created_at'] = pd.to_datetime(df_wc_farms_irrigation['inittime'])
+    df_wc_farms_irrigation['date'] = df_wc_farms_irrigation['created_at'].dt.date
+    df_wc_farms_irrigation['hour'] = df_wc_farms_irrigation['created_at'].dt.time
+    df_wc_farms_irrigation['delta_time'] = pd.to_datetime(df_wc_farms_irrigation['endtime']) - pd.to_datetime(df_wc_farms_irrigation['inittime'])
     return df_wc_farms_irrigation
 
 def process_data_real_irrigation(data_wc_farms_realirrigation):
@@ -41,6 +48,10 @@ def process_data_real_irrigation(data_wc_farms_realirrigation):
     df_wc_farms_realirrigation[['instantaneousFlow m3/h' , "instantaneousFlow1", "instantaneousFlow2"]] = df_wc_farms_realirrigation['instantaneousFlow'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
     df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3","instantaneousFlow1", "instantaneousFlow2", "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", "stoppedByUser", "fertigations", "phControl", "measures", "alarms", "hydraulics"],axis = 1, inplace = True)
     df_wc_farms_realirrigation.rename(columns = {"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id", "volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "flow m3/h": "flow_m3_h", "instantaneousFlow m3/h": "instantaneous_flow_m3_h"}, inplace = True)
+    df_wc_farms_realirrigation['created_at'] = pd.to_datetime(df_wc_farms_realirrigation['inittime'])
+    df_wc_farms_realirrigation['date'] = df_wc_farms_realirrigation['created_at'].dt.date
+    df_wc_farms_realirrigation['hour'] = df_wc_farms_realirrigation['created_at'].dt.time
+    df_wc_farms_realirrigation['delta_time'] = pd.to_datetime(df_wc_farms_realirrigation['endtime']) - pd.to_datetime(df_wc_farms_realirrigation['inittime'])
     return df_wc_farms_realirrigation
 
 def clean_channel_data(data_ubi_channels):

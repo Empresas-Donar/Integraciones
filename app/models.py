@@ -9,6 +9,9 @@ import uuid
 class WC_Farms_Zones(db.Model):
     __tablename__ = 'wc_farms_zones'
     id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
     name = db.Column(db.Text)
     description = db.Column(db.Text)
     latitude = db.Column(db.Text)
@@ -43,8 +46,12 @@ class WC_Farms_Zones(db.Model):
 class WCFarmsIrrigation(db.Model):
     __tablename__ = 'wc_farms_irrigation'
     id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
     inittime = db.Column(db.DateTime)
     endtime = db.Column(db.DateTime)
+    delta_time = db.Column(db.DateTime)
     status = db.Column(db.Text)
     irrigationtype = db.Column(db.Text)
     pumpsystemid = db.Column(db.Integer)
@@ -68,8 +75,12 @@ class ExecutionLog(db.Model):
 class WCFarmsRealIrrigation(db.Model):
     __tablename__ = 'wc_farms_realirrigation'
     id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
     init_time = db.Column(db.DateTime)
     end_time = db.Column(db.DateTime)
+    delta_time = db.Column(db.DateTime)
     zone_id = db.Column(db.Integer)
     status = db.Column(db.Text)
     pump_system_id = db.Column(db.Integer)
