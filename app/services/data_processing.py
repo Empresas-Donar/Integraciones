@@ -3,6 +3,7 @@
 import pandas as pd
 import uuid
 from datetime import datetime
+import pytz
 
 raw_data_ubi_channels = None
 raw_df_summary = pd.DataFrame()
@@ -24,6 +25,7 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones['date'] = df_wc_farms_zones['created_at'].dt.date
     df_wc_farms_zones['hour'] = df_wc_farms_zones['created_at'].dt.time
     return df_wc_farms_zones
+
 def process_data_irrigation(data_wc_farms_irrigation):
     df_wc_farms_irrigation = pd.DataFrame(data_wc_farms_irrigation)
     df_wc_farms_irrigation.rename(columns = {"initTime": "inittime", "endTime": "endtime", "irrigationType": "irrigationtype", "pumpSystemId": "pumpsystemid", "pumpIds": "pumpids", "zoneId": "zoneid", "sentToNetwork": "senttonetwork", "scheduledType": "scheduledtype", "groupingName": "groupingname"}, inplace = True)
@@ -55,7 +57,6 @@ def process_data_real_irrigation(data_wc_farms_realirrigation):
     return df_wc_farms_realirrigation
 
 def clean_channel_data(data_ubi_channels):
-
     if isinstance(data_ubi_channels, dict):
         data_ubi_channels = pd.DataFrame(data_ubi_channels['channels'])
     elif isinstance(data_ubi_channels, list):
@@ -64,7 +65,9 @@ def clean_channel_data(data_ubi_channels):
     raw_data_ubi_channels = data_ubi_channels.copy() 
     data_ubi_channels['id'] = range(1, len(data_ubi_channels) + 1)
     data_ubi_channels.replace('', None, inplace=True)
-    data_ubi_channels['created_at'] = pd.Timestamp.now()
+    chile_tz = pytz.timezone('America/Santiago')
+    current_time_in_chile = datetime.now(chile_tz)
+    data_ubi_channels['created_at'] = current_time_in_chile
     data_ubi_channels['date'] = data_ubi_channels['created_at'].dt.date
     data_ubi_channels['hour'] = data_ubi_channels['created_at'].dt.time
     allowed_columns = [
@@ -83,9 +86,15 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
         data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]
     data_ubi_summary['channel_id'] = channel_id
     data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
-    if 'created_at' not in data_ubi_summary.columns:
-        data_ubi_summary['created_at'] = None
-    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
+    if not pd.api.types.is_datetime64_any_dtype(data_ubi_summary['created_at']):
+        data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
+    chile_tz = pytz.timezone('America/Santiago')
+    if not pd.api.types.is_datetime64_any_dtype(data_ubi_summary['created_at']):
+        data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
+    if data_ubi_summary['created_at'].dt.tz is None:
+        data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_localize('UTC').dt.tz_convert(chile_tz)
+    else:
+        data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_convert(chile_tz)
     data_ubi_summary['date'] = data_ubi_summary['created_at'].dt.date
     data_ubi_summary['hour'] = data_ubi_summary['created_at'].dt.time
     expected_fields = [f'field{n}' for n in range(1, 16)]
@@ -105,5 +114,4 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
     raw_df_summary = pd.concat([raw_df_summary, data_ubi_summary], ignore_index=True)
     columns_to_keep = ['id', 'channel_id', 'created_at', 'date', 'hour']
     data_ubi_summary = data_ubi_summary[columns_to_keep]
-
     return data_ubi_summary

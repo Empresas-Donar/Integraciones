@@ -7,8 +7,9 @@ import pandas as pd
 from app import db
 import json
 import uuid
-from app.services.utils import is_valid_integer, clean_data
+from app.services.utils import is_valid_integer, clean_data, convert_to_chilean_time
 from datetime import datetime
+import pytz
 
 def manage_data_ubi(processed_data, data_type):
     model_mapping = {
@@ -27,6 +28,7 @@ def manage_data_ubi(processed_data, data_type):
         new_data = []
 
         for item in data_dict:
+            item['created_at'] = convert_to_chilean_time(item['created_at'])
             instance = model(**item)
             db.session.add(instance)
             new_data.append(item)
@@ -52,6 +54,7 @@ def manage_data_ubi(processed_data, data_type):
             if 'id' not in item or not item['id']:
                 item['id'] = uuid.uuid4().hex
             channel_id = item['channel_id']
+            item['created_at'] = convert_to_chilean_time(item['created_at'])
             created_at = item['created_at']
             with db.session.no_autoflush:
                 exists = db.session.query(model).filter_by(channel_id=channel_id, created_at=created_at).first()
@@ -76,22 +79,21 @@ def manage_fields_ubi(df):
     df = df.dropna(subset=['channel_id', 'created_at'])
     df = df[df['channel_id'] < 100000]
     df = df[df['count'].fillna(0).apply(lambda x: x <= 24)]
-
     df['avg'] = df['avg'].fillna(0)
     df['count'] = df['count'].fillna(0)
     df['min'] = df['min'].fillna(0)
     df['max'] = df['max'].fillna(0)
-
     data_dicts = df.to_dict(orient='records')
-
     records_to_add = []
     for row in data_dicts:
+        created_at_utc = row['created_at']
+        row['created_at'] = convert_to_chilean_time(created_at_utc)
+        
         existing_record = UbibotFields.query.filter_by(
             channel_id=row['channel_id'],
             created_at=row['created_at'],
             name=row['name']
         ).first()
-
         if not existing_record:
             new_record = UbibotFields(
                 summary_id=row['summary_id'],
@@ -106,7 +108,6 @@ def manage_fields_ubi(df):
                 max=row['max']
             )
             records_to_add.append(new_record)
-
     if records_to_add:
         try:
             db.session.bulk_save_objects(records_to_add)
