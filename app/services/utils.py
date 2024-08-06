@@ -2,6 +2,15 @@
 
 import pandas as pd
 import uuid
+import pytz
+from datetime import datetime
+
+def convert_to_chilean_time(utc_datetime):
+    chile_tz = pytz.timezone('America/Santiago')
+    if isinstance(utc_datetime, str):
+        utc_datetime = datetime.strptime(utc_datetime, '%Y-%m-%d %H:%M:%S')
+    chilean_time = utc_datetime.replace(tzinfo=pytz.UTC).astimezone(chile_tz)
+    return chilean_time
 
 def is_valid_integer(value):
     try:
