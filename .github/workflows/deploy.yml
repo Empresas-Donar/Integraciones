@@ -24,13 +24,18 @@ jobs:
     - name: Copy files via SCP
       run: scp -r -o StrictHostKeyChecking=no ./* ubuntu@18.117.28.235:/home/ubuntu/integracionwiseconn
 
+    - name: Install dependencies
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 << 'EOF'
+        cd /home/ubuntu/integracionwiseconn
+        sudo pip3 install -r requirements.txt
+        exit
+        EOF
+
     - name: SSH and restart service
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 << 'EOF'
         cd /home/ubuntu/integracionwiseconn
-        # Asegúrate de que el entorno virtual está activado
-        source venv/bin/activate
-        # Reinicia el servicio systemd
         sudo systemctl restart integracionwiseconn.service
         exit
         EOF
