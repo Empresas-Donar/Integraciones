@@ -11,100 +11,11 @@ from .data_processing import clean_channel_data, clean_channel_data_summary
 account_key = os.getenv('UBIBOT_ACCOUNT_KEY')
 request_counter = 0
 start_time = time.time()
+
 endpoints_config = {
     "channels": {
         "url": "https://webapi.ubibot.com/channels",
         "process_function": clean_channel_data
-    },
-    "summary_67928": {
-        "url": "https://webapi.ubibot.com/channels/67928/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 67928
-    },
-    "summary_68625": {
-        "url": "https://webapi.ubibot.com/channels/68625/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 68625
-    },
-    "summary_71208": {
-        "url": "https://webapi.ubibot.com/channels/71208/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 71208
-    },
-    "summary_80646": {
-        "url": "https://webapi.ubibot.com/channels/80646/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 80646
-    },
-    "summary_80647": {
-        "url": "https://webapi.ubibot.com/channels/80647/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 80647
-    },
-    "summary_83204": {
-        "url": "https://webapi.ubibot.com/channels/83204/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 83204
-    },
-    "summary_83605": {
-        "url": "https://webapi.ubibot.com/channels/83605/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 83605
-    },
-    "summary_87975": {
-        "url": "https://webapi.ubibot.com/channels/87975/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 87975
-    },
-    "summary_88155": {
-        "url": "https://webapi.ubibot.com/channels/88155/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88155
-    },
-    "summary_88158": {
-        "url": "https://webapi.ubibot.com/channels/88158/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88158
-    },
-    "summary_88251": {
-        "url": "https://webapi.ubibot.com/channels/88251/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88251
-    },
-    "summary_88252": {
-        "url": "https://webapi.ubibot.com/channels/88252/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88252
-    },
-    "summary_88253": {
-        "url": "https://webapi.ubibot.com/channels/88253/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88253
-    },
-    "summary_88257": {
-        "url": "https://webapi.ubibot.com/channels/88257/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88257
-    },
-    "summary_88259": {
-        "url": "https://webapi.ubibot.com/channels/88259/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88259
-    },
-    "summary_88260": {
-        "url": "https://webapi.ubibot.com/channels/88260/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88260
-    },
-    "summary_88261": {
-        "url": "https://webapi.ubibot.com/channels/88261/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88261
-    },
-    "summary_88271": {
-        "url": "https://webapi.ubibot.com/channels/88271/summary",
-        "process_function": clean_channel_data_summary,
-        "channel_id": 88271
     }
 }
 
@@ -147,24 +58,40 @@ def fetch_data_ubi(endpoint_key):
             print(f"Error fetching data for {endpoint_key}: {response.status_code}")
         return None, endpoint_key
 
+def generate_summary_endpoints(channels_data):
+    for channel in channels_data['channels']:
+        channel_id = channel['channel_id']
+        endpoint_key = f"summary_{channel_id}"
+        endpoints_config[endpoint_key] = {
+            "url": f"https://webapi.ubibot.com/channels/{channel_id}/summary",
+            "process_function": clean_channel_data_summary,
+            "channel_id": channel_id
+        }
+
 def runubi_fetch_process():
     global request_counter, start_time
     results = []
     status_ubibot = "Success"
     try:
+        channels_data, endpoint_key = fetch_data_ubi("channels")
+        if channels_data:
+            process_function = endpoints_config[endpoint_key]["process_function"]
+            processed_data = process_function(channels_data)
+            results.append((processed_data, str(endpoint_key)))
+            generate_summary_endpoints(channels_data)
+        
         endpoint_keys = list(endpoints_config.keys())
         total_endpoints = len(endpoint_keys)
         
         for i in range(0, total_endpoints, 10):
             batch = endpoint_keys[i:i+10]
             for key in batch:
+                if key == "channels":
+                    continue
                 data, endpoint_key = fetch_data_ubi(key)
                 if data:
                     process_function = endpoints_config[key]["process_function"]
-                    if "channel_id" in endpoints_config[key]:
-                        processed_data = process_function(data, endpoints_config[key]["channel_id"])
-                    else:
-                        processed_data = process_function(data)
+                    processed_data = process_function(data, endpoints_config[key]["channel_id"])
                     results.append((processed_data, str(endpoint_key)))
             
             if i + 10 < total_endpoints:
