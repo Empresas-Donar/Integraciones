@@ -99,7 +99,8 @@ class UbibotChannels(db.Model):
     hour = db.Column(db.Time, nullable=True)
     latitude = db.Column(db.String)
     longitude = db.Column(db.String)
-    name = db.Column(db.String(255))  
+    name = db.Column(db.String(255))
+    net = db.Column(db.Integer)  
 
 class UbibotSummary(db.Model):
     __tablename__ = 'ubi_channel_summary'
