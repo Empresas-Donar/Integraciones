@@ -8,3 +8,4 @@ Flask-Migrate==3.1.0
 APScheduler==3.10.4
 Werkzeug==2.0.2
 pytz==2021.1
+sendgrid==6.9.1
