@@ -2,7 +2,8 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app import db 
-from app.mail_class import MailManager, UbibotAlertManager 
+from app.mail_class import MailManager
+from app.ubi_alert_class import UbibotAlertManager
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 engine = create_engine(DATABASE_URL)
