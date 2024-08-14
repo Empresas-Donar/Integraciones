@@ -71,7 +71,7 @@ def clean_channel_data(data_ubi_channels):
     data_ubi_channels['date'] = data_ubi_channels['created_at'].dt.date
     data_ubi_channels['hour'] = data_ubi_channels['created_at'].dt.time
     allowed_columns = [
-        'id', 'channel_id', 'created_at', 'date', 'hour',  'latitude', 'longitude', 'name'
+        'id', 'channel_id', 'created_at', 'date', 'hour',  'latitude', 'longitude', 'name', 'net'
     ]
     columns_to_drop = [col for col in data_ubi_channels.columns if col not in allowed_columns]
     data_ubi_channels.drop(columns=columns_to_drop, axis=1, inplace=True)

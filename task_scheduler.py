@@ -1,12 +1,9 @@
 import logging
 import subprocess
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
 import time
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s',
-                    handlers=[logging.StreamHandler()])
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler()])
 logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 def scheduled_job():
@@ -16,33 +13,25 @@ def scheduled_job():
     if result.stderr:
         logging.error(f"Errores de run.py: {result.stderr}")
 
+def scheduled_sendgrid_job():
+    logging.info("Ejecutando test_sendgrid.py...")
+    result = subprocess.run(["python3", "test_sendgrid.py"], capture_output=True, text=True)
+    logging.info(f"Salida de test_sendgrid.py: {result.stdout}")
+    if result.stderr:
+        logging.error(f"Errores de test_sendgrid.py: {result.stderr}")
+
 scheduler = BackgroundScheduler()
 
+def add_jobs(scheduler, job_function, times):
+    for hour, minute in times:
+        scheduler.add_job(job_function, 'cron', hour=hour, minute=minute)
+
+scheduled_times = [(hour, '00') for hour in range(24)]
+sendgrid_times = [(hour, '08') for hour in range(24)]
+
 def schedule_tasks():
-    scheduler.add_job(scheduled_job, 'cron', hour='01', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='02', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='03', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='04', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='05', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='06', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='07', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='08', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='09', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='10', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='11', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='12', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='13', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='14', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='15', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='16', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='17', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='18', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='19', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='20', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='21', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='22', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='23', minute='00')
-    scheduler.add_job(scheduled_job, 'cron', hour='00', minute='00')
+    add_jobs(scheduler, scheduled_job, scheduled_times)
+    add_jobs(scheduler, scheduled_sendgrid_job, sendgrid_times)
 
 if __name__ == "__main__":
     print("Programando tareas...", flush=True)
@@ -56,4 +45,3 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         print("Scheduler detenido.", flush=True)
-
