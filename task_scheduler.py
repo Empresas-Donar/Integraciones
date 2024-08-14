@@ -27,7 +27,7 @@ def add_jobs(scheduler, job_function, times):
         scheduler.add_job(job_function, 'cron', hour=hour, minute=minute)
 
 scheduled_times = [(hour, '00') for hour in range(24)]
-sendgrid_times = [(hour, '31') if hour != 15 else (hour, '05') for hour in range(24)]
+sendgrid_times = [(hour, '08') for hour in range(24)]
 
 def schedule_tasks():
     add_jobs(scheduler, scheduled_job, scheduled_times)
