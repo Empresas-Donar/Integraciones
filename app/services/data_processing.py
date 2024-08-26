@@ -7,6 +7,7 @@ import pytz
 
 raw_data_ubi_channels = None
 raw_df_summary = pd.DataFrame()
+zone_id_dict = {}
 
 def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones = pd.DataFrame(data_wc_farms_zones)
@@ -44,17 +45,78 @@ def process_data_irrigation(data_wc_farms_irrigation):
 
 def process_data_real_irrigation(data_wc_farms_realirrigation):
     df_wc_farms_realirrigation = pd.DataFrame(data_wc_farms_realirrigation)
-    df_wc_farms_realirrigation[["volume m3" , "volume1", "volume2"]] = df_wc_farms_realirrigation['volume'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
-    df_wc_farms_realirrigation[["precipitation mm" , "precipitation2", "precipitation3"]] = df_wc_farms_realirrigation['precipitation'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
-    df_wc_farms_realirrigation[["flow m3/h" , "th2", "th3"]] = df_wc_farms_realirrigation['flow'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
-    df_wc_farms_realirrigation[['instantaneousFlow m3/h' , "instantaneousFlow1", "instantaneousFlow2"]] = df_wc_farms_realirrigation['instantaneousFlow'].apply(pd.Series)[["value","unitName", "unitAbrev"]]
-    df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3","instantaneousFlow1", "instantaneousFlow2", "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", "stoppedByUser", "fertigations", "phControl", "measures", "alarms", "hydraulics"],axis = 1, inplace = True)
-    df_wc_farms_realirrigation.rename(columns = {"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id", "volume m3": "volume_m3", "precipitation mm": "precipitation_mm", "flow m3/h": "flow_m3_h", "instantaneousFlow m3/h": "instantaneous_flow_m3_h"}, inplace = True)
-    df_wc_farms_realirrigation['created_at'] = pd.to_datetime(df_wc_farms_realirrigation['inittime'])
+    df_wc_farms_realirrigation[["volume_m3", "volume1", "volume2"]] = df_wc_farms_realirrigation['volume'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[["precipitation_mm", "precipitation2", "precipitation3"]] = df_wc_farms_realirrigation['precipitation'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[["flow_m3_h", "th2", "th3"]] = df_wc_farms_realirrigation['flow'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
+    df_wc_farms_realirrigation[['instantaneous_flow_m3_h', "instantaneousFlow1", "instantaneousFlow2"]] = df_wc_farms_realirrigation['instantaneousFlow'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
+
+    df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3", "instantaneousFlow1", "instantaneousFlow2", 
+                                      "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", 
+                                      "stoppedByUser", "fertigations", "phControl", "alarms", "hydraulics"], axis=1, inplace=True)
+
+    df_wc_farms_realirrigation.rename(columns={"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", 
+                                               "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id"}, inplace=True)
+
+    df_wc_farms_realirrigation['created_at'] = pd.to_datetime(df_wc_farms_realirrigation['init_time'])
     df_wc_farms_realirrigation['date'] = df_wc_farms_realirrigation['created_at'].dt.date
     df_wc_farms_realirrigation['hour'] = df_wc_farms_realirrigation['created_at'].dt.time
-    df_wc_farms_realirrigation['delta_time'] = pd.to_datetime(df_wc_farms_realirrigation['endtime']) - pd.to_datetime(df_wc_farms_realirrigation['inittime'])
+    df_wc_farms_realirrigation['delta_time'] = pd.to_datetime(df_wc_farms_realirrigation['end_time']) - pd.to_datetime(df_wc_farms_realirrigation['init_time'])
+    def get_pressure_measure_id(measures):
+        for measure in measures:
+            if measure.get('sensorType') == 'Pressure':
+                return measure.get('measureId')
+        return None
+
+    df_wc_farms_realirrigation['pressure_measure_id'] = df_wc_farms_realirrigation['measures'].apply(get_pressure_measure_id)
+    def fetch_pressure(measure_id, init_time, end_time):
+        from .wiseconn import fetch_data 
+        if measure_id:
+            sensor_data = fetch_data('sensor_data', measure_id)
+            if sensor_data:
+                df_sensor_data = pd.DataFrame(sensor_data)
+                if not df_sensor_data.empty:
+                    df_sensor_data['time'] = pd.to_datetime(df_sensor_data['time'])
+                    df_filtered = df_sensor_data[(df_sensor_data['time'] >= init_time) & (df_sensor_data['time'] <= end_time)]
+    
+                    if not df_filtered.empty:
+                        return df_filtered['value'].iloc[0]  
+                
+        return None  
+    df_wc_farms_realirrigation['pressure'] = df_wc_farms_realirrigation.apply(
+        lambda row: fetch_pressure(row['pressure_measure_id'], row['init_time'], row['end_time']), axis=1)
+    df_wc_farms_realirrigation.drop('pressure_measure_id', axis=1, inplace=True)
+
     return df_wc_farms_realirrigation
+
+def process_data_measures(data_measures):
+    df = pd.DataFrame(data_measures)
+    df['unit'] = df['unit'].fillna('N/A')
+    df_unique = df.drop_duplicates(subset=['id'])
+    processed_items = df_unique[['id', 'name', 'unit']].rename(columns={'id': 'sensor_id'}).to_dict(orient='records')
+    unique_ids = df_unique['id'].tolist()
+    return {
+        "unique_ids": unique_ids,
+        "processed_items": processed_items
+    }
+
+def process_sensor_data(data):
+    chile_tz = pytz.timezone('America/Santiago')
+    processed_data = {
+        "values": []
+    }
+    for item in data:
+        if "time" in item and item["time"]:
+            time_obj = pd.to_datetime(item["time"])
+        else:
+            time_obj = datetime.now(chile_tz)
+        value = item.get("value", float('nan'))
+        processed_data["values"].append({
+            "created_at": time_obj,
+            "date": time_obj.date(),
+            "hour": time_obj.time(),
+            "value": value
+        })
+    return processed_data
 
 def clean_channel_data(data_ubi_channels):
     if isinstance(data_ubi_channels, dict):

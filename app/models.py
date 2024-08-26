@@ -88,7 +88,19 @@ class WCFarmsRealIrrigation(db.Model):
     volume_m3 = db.Column(db.Float)
     precipitation_mm = db.Column(db.Float)
     flow_m3_h = db.Column(db.Float)
-    instantaneous_flow_m3_h = db.Column(db.Float) 
+    instantaneous_flow_m3_h = db.Column(db.Float)
+    pressure = db.Column(db.Float)
+
+class WCZonesSensors(db.Model):
+    __tablename__ = 'wc_zones_sensors'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sensor_id = db.Column(db.String, primary_key=True)
+    name = db.Column(db.Text)
+    unit = db.Column(db.Text) 
+    values = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True) 
+    hour = db.Column(db.Time, nullable=True)  
 
 class UbibotChannels(db.Model):
     __tablename__ = 'ubi_channel_data'
