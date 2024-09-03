@@ -36,13 +36,31 @@ def fetch_data_ubi(endpoint_key):
     else:
         url = config["url"]
         today = datetime.today()
-        yesterday = today - timedelta(days=1)
+        weekday = today.weekday()
+
+        if weekday == 0:
+            start_date = today - timedelta(days=3)
+            results_limit = 300
+            print("Ejecutando fetch_data_ubi en modalidad especial (Lunes): Rango de fechas extendido, results=500")
+        elif weekday == 2: 
+            results_limit = 300
+            print("Ejecutando fetch_data_ubi en modalidad especial (Miércoles): Rango de fechas extendido, results=500")
+        elif weekday == 4:
+            start_date = today - timedelta(days=2)
+            results_limit = 300
+            print("Ejecutando fetch_data_ubi en modalidad especial (Viernes): Rango de fechas extendido, results=500")
+        else:
+            start_date = today - timedelta(days=1)
+            results_limit = 100
+            print("Ejecutando fetch_data_ubi en modalidad estándar: Rango de 24 horas, results=100")
+
         params = {
             "account_key": account_key,
-            "results": 100,
-            "start": yesterday.strftime('%Y-%m-%d %H:%M:%S'),
+            "results": results_limit, 
+            "start": start_date.strftime('%Y-%m-%d %H:%M:%S'),
             "end": today.strftime('%Y-%m-%d %H:%M:%S')
         }
+
         params_encoded = urlencode(params)
         response = requests.get(f"{url}?{params_encoded}")
         request_counter += 1
@@ -57,6 +75,7 @@ def fetch_data_ubi(endpoint_key):
         else:
             print(f"Error fetching data for {endpoint_key}: {response.status_code}")
         return None, endpoint_key
+
 
 def generate_summary_endpoints(channels_data):
     for channel in channels_data['channels']:
@@ -92,8 +111,7 @@ def runubi_fetch_process():
                 if data:
                     process_function = endpoints_config[key]["process_function"]
                     processed_data = process_function(data, endpoints_config[key]["channel_id"])
-                    results.append((processed_data, str(endpoint_key)))
-            
+                    results.append((processed_data, str(endpoint_key)))          
             if i + 10 < total_endpoints:
                 print("Sleeping for 60 seconds to avoid rate limit")
                 time.sleep(60)
