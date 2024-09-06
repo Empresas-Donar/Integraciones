@@ -102,10 +102,9 @@ def manage_data_ubi(processed_data, data_type):
             db.session.rollback()
             print(f"Error al insertar en la base de datos para {base_data_type}: {e}")
 
-def manage_fields_ubi(df):
+def manage_fields_ubi(df, batch_size=200):
 
     try:
-
         select_query = """
         SELECT created_at, channel_id, name, avg, count, min, max, date, hour, summary_id
         FROM ubi_channels_fields
@@ -126,7 +125,9 @@ def manage_fields_ubi(df):
     df['min'] = df['min'].fillna(0)  
     df['max'] = df['max'].fillna(0) 
 
+
     data_dicts = df.to_dict(orient='records')
+
 
     insert_statement = """
     INSERT INTO ubi_channels_fields (created_at, channel_id, name, avg, count, min, max, date, hour, summary_id)
@@ -139,14 +140,20 @@ def manage_fields_ubi(df):
         max = EXCLUDED.max
     WHERE ubi_channels_fields.count < 12;
     """
-
+    
     try:
-        db.session.execute(
-            text(insert_statement),  
-            data_dicts  
-        )
-        db.session.commit()  
-        print(f"{len(data_dicts)} registros insertados/actualizados con éxito.")
+
+        for i in range(0, len(data_dicts), batch_size):
+            batch = data_dicts[i:i + batch_size]
+            db.session.execute(
+                text(insert_statement),
+                batch  
+            )
+            db.session.commit()  
+            print(f"Insertados/actualizados {len(batch)} registros en el lote {i // batch_size + 1}.")
+        
+        print(f"Se completaron {len(data_dicts)} registros insertados/actualizados en total.")
+    
     except IntegrityError as e:
         db.session.rollback()  
         print(f"Error al insertar/actualizar registros: {e}")
