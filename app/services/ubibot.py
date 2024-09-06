@@ -36,31 +36,13 @@ def fetch_data_ubi(endpoint_key):
     else:
         url = config["url"]
         today = datetime.today()
-        weekday = today.weekday()
-
-        if weekday == 0:
-            start_date = today - timedelta(days=3)
-            results_limit = 300
-            print("Ejecutando fetch_data_ubi en modalidad especial (Lunes): Rango de fechas extendido, results=500")
-        elif weekday == 2: 
-            results_limit = 300
-            print("Ejecutando fetch_data_ubi en modalidad especial (Miércoles): Rango de fechas extendido, results=500")
-        elif weekday == 4:
-            start_date = today - timedelta(days=2)
-            results_limit = 300
-            print("Ejecutando fetch_data_ubi en modalidad especial (Viernes): Rango de fechas extendido, results=500")
-        else:
-            start_date = today - timedelta(days=1)
-            results_limit = 100
-            print("Ejecutando fetch_data_ubi en modalidad estándar: Rango de 24 horas, results=100")
-
+        yesterday = today - timedelta(days=10)
         params = {
             "account_key": account_key,
-            "results": results_limit, 
-            "start": start_date.strftime('%Y-%m-%d %H:%M:%S'),
+            "results": 5000,
+            "start": yesterday.strftime('%Y-%m-%d %H:%M:%S'),
             "end": today.strftime('%Y-%m-%d %H:%M:%S')
         }
-
         params_encoded = urlencode(params)
         response = requests.get(f"{url}?{params_encoded}")
         request_counter += 1
@@ -74,7 +56,7 @@ def fetch_data_ubi(endpoint_key):
                 print(f"Error: {data.get('errorCode')} - {data.get('desp')}")
         else:
             print(f"Error fetching data for {endpoint_key}: {response.status_code}")
-        return None, endpoint_key
+        return None, endpoint_key 
 
 
 def generate_summary_endpoints(channels_data):
