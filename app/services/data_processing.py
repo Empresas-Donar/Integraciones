@@ -144,36 +144,43 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
         data_ubi_summary = pd.json_normalize(data_ubi_summary)
     elif isinstance(data_ubi_summary, dict):
         data_ubi_summary = pd.DataFrame([data_ubi_summary])    
+    
     if 'id' not in data_ubi_summary.columns:
-        data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]
+        data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]   
+    
     data_ubi_summary['channel_id'] = channel_id
     data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
-    if not pd.api.types.is_datetime64_any_dtype(data_ubi_summary['created_at']):
-        data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
-    chile_tz = pytz.timezone('America/Santiago')
-    if not pd.api.types.is_datetime64_any_dtype(data_ubi_summary['created_at']):
-        data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
-    if data_ubi_summary['created_at'].dt.tz is None:
-        data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_localize('UTC').dt.tz_convert(chile_tz)
+    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
+
+    if pd.api.types.is_datetime64tz_dtype(data_ubi_summary['created_at']):
+        print("La columna 'created_at' contiene información de zona horaria.")
     else:
-        data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_convert(chile_tz)
+        print("La columna 'created_at' NO contiene información de zona horaria.")
+    
     data_ubi_summary['date'] = data_ubi_summary['created_at'].dt.date
     data_ubi_summary['hour'] = data_ubi_summary['created_at'].dt.time
+    
     expected_fields = [f'field{n}' for n in range(1, 16)]
     metrics = ['avg', 'count', 'min', 'max']
+    
     for field in expected_fields:
         if field not in data_ubi_summary.columns:
             for metric in metrics:
                 column_name = f'{field}_{metric}'
                 if column_name not in data_ubi_summary.columns:
                     data_ubi_summary[column_name] = None
-    columns_to_drop = []
-    for field in expected_fields:
-        for metric in ['sum', 'sd']:
-            columns_to_drop.append(f'{field}_{metric}')
+    
+    columns_to_drop = [f'{field}_{metric}' for field in expected_fields for metric in ['sum', 'sd']]
     data_ubi_summary.drop(columns=[col for col in columns_to_drop if col in data_ubi_summary.columns], inplace=True)
+    data_ubi_summary = data_ubi_summary.dropna(subset=['channel_id', 'created_at'])
+    
+    if data_ubi_summary['created_at'].isnull().any():
+        print("Advertencia: Algunas filas tienen 'created_at' nulo después de la conversión.")
+    
     global raw_df_summary
     raw_df_summary = pd.concat([raw_df_summary, data_ubi_summary], ignore_index=True)
     columns_to_keep = ['id', 'channel_id', 'created_at', 'date', 'hour']
     data_ubi_summary = data_ubi_summary[columns_to_keep]
+    print(data_ubi_summary[['created_at', 'date', 'hour']].head())
+    
     return data_ubi_summary
