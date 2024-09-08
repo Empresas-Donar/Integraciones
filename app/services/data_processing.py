@@ -157,9 +157,12 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
         data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]   
     
     data_ubi_summary['channel_id'] = channel_id
-    print(data_ubi_summary[['channel_id']].head()) 
+    print(data_ubi_summary[['channel_id']].head())
     data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
-    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
+    
+    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'], utc=True)
+    data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_convert('America/Santiago')
+
     if pd.api.types.is_datetime64tz_dtype(data_ubi_summary['created_at']):
         print("La columna 'created_at' contiene información de zona horaria.")
     else:
@@ -167,6 +170,7 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
     
     data_ubi_summary['date'] = data_ubi_summary['created_at'].dt.date
     data_ubi_summary['hour'] = data_ubi_summary['created_at'].dt.time
+    
     expected_fields = [f'field{n}' for n in range(1, 16)]
     metrics = ['avg', 'count', 'min', 'max']
     
@@ -188,7 +192,9 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
         print("Advertencia: Algunas filas tienen 'created_at' nulo después de la conversión.")
     
     global raw_df_summary
+    
     data_ubi_summary = data_ubi_summary.dropna(how='all', axis=1)
+    
     if data_ubi_summary['channel_id'].isna().all():
         raise ValueError("'channel_id' está vacío o contiene solo NaN antes de concatenar.")
     raw_df_summary = pd.concat([raw_df_summary, data_ubi_summary], ignore_index=True, sort=False)
