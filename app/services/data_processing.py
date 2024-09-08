@@ -159,7 +159,7 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
     data_ubi_summary['channel_id'] = channel_id
     print(data_ubi_summary[['channel_id']].head()) 
     data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
-    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'], utc=True)
+    data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'])
     if pd.api.types.is_datetime64tz_dtype(data_ubi_summary['created_at']):
         print("La columna 'created_at' contiene información de zona horaria.")
     else:
