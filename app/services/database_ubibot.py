@@ -117,9 +117,7 @@ def manage_fields_ubi(df, batch_size=200):
         print(f"Error al filtrar registros de la base de datos: {e}")
         return  
 
-    df = df.dropna(subset=['channel_id', 'created_at']) 
-    df = df[df['channel_id'] < 100000]  
-    df = df[df['count'].fillna(0).apply(lambda x: x <= 24)]  
+    df = df.dropna(subset=['channel_id', 'created_at'])  
     df['avg'] = df['avg'].fillna(0)  
     df['count'] = df['count'].fillna(0) 
     df['min'] = df['min'].fillna(0)  
