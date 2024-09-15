@@ -70,8 +70,6 @@ def main():
             channel_mapping = create_channel_sensor_mapping(raw_data_ubi_channels)
             final_df = create_final_dataframe(channel_mapping, raw_df_summary)
             manage_fields_ubi(final_df)
-
-
             log = ExecutionLog(
                 status_wiseconn=status_wiseconn,
                 status_ubibot=status_ubibot,
@@ -81,23 +79,16 @@ def main():
             db.session.commit()
             logging.info(f"Registro añadido con estados - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
     
-
     end_time = time.time()  
     total_time = end_time - start_time  
-    
     cpu_usage = psutil.cpu_percent(interval=1)  
     end_memory_usage = process.memory_info().rss / (1024 ** 2)  
-
     memory_usage = end_memory_usage - start_memory_usage
 
     logging.info(f"Tiempo total de ejecución: {total_time:.2f} segundos")
     logging.info(f"Uso promedio de CPU: {cpu_usage:.2f}%")
     logging.info(f"Memoria usada: {memory_usage:.2f} MB")
 
-    print(f"Tiempo total de ejecución: {total_time:.2f} segundos")
-    print(f"Uso promedio de CPU: {cpu_usage:.2f}%")
-    print(f"Memoria usada: {memory_usage:.2f} MB")
-    
     return {"status_wiseconn": status_wiseconn, "status_ubibot": status_ubibot}
 
 if __name__ == "__main__":
