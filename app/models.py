@@ -43,9 +43,47 @@ class WC_Farms_Zones(db.Model):
     northeast_lng = db.Column(db.Float)
     northeast_lat = db.Column(db.Float)
 
+class WC_Farms_Zones_IMaipo(db.Model):
+    __tablename__ = 'wc_farms_zones_imaipo'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
+    name = db.Column(db.Text)
+    description = db.Column(db.Text)
+    latitude = db.Column(db.Text)
+    longitude = db.Column(db.Text)
+    type = db.Column(db.Text)
+    farmid = db.Column(db.Integer)
+    pumpsystemid = db.Column(db.Float)
+    kc = db.Column(db.Integer)
+    theoreticalflowm3h = db.Column(db.Float)  
+    efficiency = db.Column(db.Text)
+    humidityretention = db.Column(db.Text)
+    max = db.Column(db.Text)
+    min = db.Column(db.Text)
+    criticalpoint1 = db.Column(db.Text)
+    criticalpoint2 = db.Column(db.Text)
+    criticalpoint3 = db.Column(db.Text)
+    criticalpoint4 = db.Column(db.Text)
+    soilmode = db.Column(db.Text)
+    crops = db.Column(db.Text)
+    area_m2 = db.Column(db.Float)
+    pumpids = db.Column(db.Text)
+    predefinedpumps = db.Column(db.Text)
+    irrigation_max = db.Column(db.Float)
+    irrigation_min = db.Column(db.Float)
+    irrigation_avg = db.Column(db.Float)
+    irrigation_std = db.Column(db.Float)
+    southwest_lng = db.Column(db.Float)
+    southwest_lat = db.Column(db.Float)
+    northeast_lng = db.Column(db.Float)
+    northeast_lat = db.Column(db.Float)
+
 class WCFarmsIrrigation(db.Model):
     __tablename__ = 'wc_farms_irrigation'
     id = db.Column(db.Integer, primary_key=True)
+    farmid = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True)
     hour = db.Column(db.Time, nullable=True)
@@ -65,6 +103,29 @@ class WCFarmsIrrigation(db.Model):
     precipitation_mm = db.Column(db.Float)
     theoreticalflow_m3_h = db.Column(db.Float) 
 
+class WCFarmsIrrigation_imaipo(db.Model):
+    __tablename__ = 'wc_farms_irrigation_imaipo'
+    id = db.Column(db.Integer, primary_key=True)
+    farmid = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
+    inittime = db.Column(db.DateTime)
+    endtime = db.Column(db.DateTime)
+    delta_time = db.Column(db.DateTime)
+    status = db.Column(db.Text)
+    irrigationtype = db.Column(db.Text)
+    pumpsystemid = db.Column(db.Integer)
+    pumpids = db.Column(db.Text)
+    zoneid = db.Column(db.Integer)
+    senttonetwork = db.Column(db.Boolean)
+    scheduledtype = db.Column(db.Text)
+    hydraulics = db.Column(db.Text)
+    groupingname = db.Column(db.Text)
+    volume_m3 = db.Column(db.Float)
+    precipitation_mm = db.Column(db.Float)
+    theoreticalflow_m3_h = db.Column(db.Float)     
+
 class ExecutionLog(db.Model):
     __tablename__ = 'execution_log'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -75,6 +136,7 @@ class ExecutionLog(db.Model):
 class WCFarmsRealIrrigation(db.Model):
     __tablename__ = 'wc_farms_realirrigation'
     id = db.Column(db.Integer, primary_key=True)
+    farmid = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True)
     hour = db.Column(db.Time, nullable=True)
@@ -91,6 +153,26 @@ class WCFarmsRealIrrigation(db.Model):
     instantaneous_flow_m3_h = db.Column(db.Float)
     pressure = db.Column(db.Float)
 
+class WCFarmsRealIrrigation_imaipo(db.Model):
+    __tablename__ = 'wc_farms_realirrigation_imaipo'
+    id = db.Column(db.Integer, primary_key=True)
+    farmid = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True)
+    hour = db.Column(db.Time, nullable=True)
+    init_time = db.Column(db.DateTime)
+    end_time = db.Column(db.DateTime)
+    delta_time = db.Column(db.DateTime)
+    zone_id = db.Column(db.Integer)
+    status = db.Column(db.Text)
+    pump_system_id = db.Column(db.Integer)
+    scheduled_irrigation_id = db.Column(db.Integer)
+    volume_m3 = db.Column(db.Float)
+    precipitation_mm = db.Column(db.Float)
+    flow_m3_h = db.Column(db.Float)
+    instantaneous_flow_m3_h = db.Column(db.Float)
+    pressure = db.Column(db.Float)    
+
 class WCZonesSensors(db.Model):
     __tablename__ = 'wc_zones_sensors'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -100,7 +182,18 @@ class WCZonesSensors(db.Model):
     values = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True) 
-    hour = db.Column(db.Time, nullable=True)  
+    hour = db.Column(db.Time, nullable=True)
+
+class WCZonesSensors_imaipo(db.Model):
+    __tablename__ = 'wc_zones_sensors_imaipo'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sensor_id = db.Column(db.String, primary_key=True)
+    name = db.Column(db.Text)
+    unit = db.Column(db.Text) 
+    values = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=True)
+    date = db.Column(db.Date, nullable=True) 
+    hour = db.Column(db.Time, nullable=True)        
 
 class UbibotChannels(db.Model):
     __tablename__ = 'ubi_channel_data'
