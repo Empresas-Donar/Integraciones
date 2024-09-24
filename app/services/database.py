@@ -1,5 +1,5 @@
 # Map models and data and upload new information to the database
-from app.models import WC_Farms_Zones, WCFarmsIrrigation, WCFarmsRealIrrigation, WCZonesSensors
+from app.models import WC_Farms_Zones, WCFarmsIrrigation, WCFarmsRealIrrigation, WCZonesSensors, WC_Farms_Zones_IMaipo, WCFarmsIrrigation_imaipo, WCFarmsRealIrrigation_imaipo, WCZonesSensors_imaipo
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
@@ -11,6 +11,9 @@ def manage_data(processed_data, data_type):
         'zones': WC_Farms_Zones,
         'irrigations': WCFarmsIrrigation,
         'realirrigations': WCFarmsRealIrrigation,
+        'zones_imaipo': WC_Farms_Zones_IMaipo,
+        'irrigations_imaipo': WCFarmsIrrigation_imaipo,
+        'realirrigations_imaipo': WCFarmsRealIrrigation_imaipo,
     }
     
     model = model_mapping.get(data_type)
@@ -25,22 +28,44 @@ def manage_data(processed_data, data_type):
             try:
                 created_at = item['created_at']
                 sensor_id = item['sensor_id']
-                existing_record = WCZonesSensors.query.filter_by(
-                    created_at=created_at,
-                    sensor_id=sensor_id
-                ).first()
-                
-                if not existing_record:
-                    new_record = WCZonesSensors(
-                        sensor_id = sensor_id,
-                        name=item["name"],
-                        unit=item["unit"],
-                        values=item["values"],
+                farm_id = item.get('farm_id')  
+
+                if farm_id == "14245":
+                    existing_record = WCZonesSensors.query.filter_by(
                         created_at=created_at,
-                        date=item["date"],
-                        hour=item["hour"]
-                    )
-                    records_to_add.append(new_record)
+                        sensor_id=sensor_id
+                    ).first()
+                    if not existing_record:
+                        
+                        new_record = WCZonesSensors(
+                            sensor_id=sensor_id,
+                            name=item["name"],
+                            unit=item["unit"],
+                            values=item["values"],
+                            created_at=created_at,
+                            date=item["date"],
+                            hour=item["hour"]
+                        )
+                        records_to_add.append(new_record)
+
+                elif farm_id == "60544":
+                    existing_record = WCZonesSensors_imaipo.query.filter_by(
+                        created_at=created_at,
+                        sensor_id=sensor_id
+                    ).first()
+                    if not existing_record:
+            
+                        new_record = WCZonesSensors_imaipo(
+                            sensor_id=sensor_id,
+                            name=item["name"],
+                            unit=item["unit"],
+                            values=item["values"],
+                            created_at=created_at,
+                            date=item["date"],
+                            hour=item["hour"]
+                        )
+                        records_to_add.append(new_record)
+
             except KeyError as e:
                 print(f"Error: Falta la clave {e} en el registro {item}")
         
@@ -48,12 +73,12 @@ def manage_data(processed_data, data_type):
             try:
                 db.session.bulk_save_objects(records_to_add)
                 db.session.commit()
-                print(f"{len(records_to_add)} nuevos registros insertados en la tabla WCZonesSensors.")
+                print(f"{len(records_to_add)} nuevos registros insertados en las tablas correspondientes.")
             except Exception as e:
                 db.session.rollback()
                 print(f"Error inserting records: {e}")
 
-    elif data_type == 'zones':
+    elif data_type in ['zones', 'zones_imaipo']:
         db.session.query(model).delete()
         data_dict = processed_data.to_dict(orient='records')
         new_data = []

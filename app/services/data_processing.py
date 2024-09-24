@@ -13,6 +13,8 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones = pd.DataFrame(data_wc_farms_zones)
     df_wc_farms_zones[['irrigation_max', 'irrigation_min', 'irrigation_avg', 'irrigation_std']] = df_wc_farms_zones['irrigationScheduleStats'].apply(pd.Series)[['max', 'min', 'avg', 'std']]
     df_wc_farms_zones.drop('irrigationScheduleStats', axis = 1, inplace= True)
+    if 'BFPressureId' not in df_wc_farms_zones.columns:
+        df_wc_farms_zones['BFPressureId'] = None
     df_wc_farms_zones['bounds'] = df_wc_farms_zones['polygon'].apply(lambda x: x['bounds'] if pd.notna(x) and 'bounds' in x else None)
     df_bounds_farms_zones = df_wc_farms_zones['bounds'].apply(pd.Series)
     df_wc_farms_zones = pd.concat([df_wc_farms_zones, df_bounds_farms_zones], axis=1)
@@ -27,8 +29,9 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones['hour'] = df_wc_farms_zones['created_at'].dt.time
     return df_wc_farms_zones
 
-def process_data_irrigation(data_wc_farms_irrigation):
+def process_data_irrigation(data_wc_farms_irrigation, farmid):
     df_wc_farms_irrigation = pd.DataFrame(data_wc_farms_irrigation)
+    df_wc_farms_irrigation['farmid'] = farmid
     df_wc_farms_irrigation.rename(columns = {"initTime": "inittime", "endTime": "endtime", "irrigationType": "irrigationtype", "pumpSystemId": "pumpsystemid", "pumpIds": "pumpids", "zoneId": "zoneid", "sentToNetwork": "senttonetwork", "scheduledType": "scheduledtype", "groupingName": "groupingname"}, inplace = True)
     df_wc_farms_irrigation[["volume m3" , "volume2"]] = df_wc_farms_irrigation['volume'].apply(pd.Series)[["value", "unitAbrev"]]
     df_wc_farms_irrigation[["precipitation mm" , "precipitation2"]] = df_wc_farms_irrigation['precipitation'].apply(pd.Series)[["value", "unitAbrev"]]
@@ -43,8 +46,9 @@ def process_data_irrigation(data_wc_farms_irrigation):
     df_wc_farms_irrigation['delta_time'] = pd.to_datetime(df_wc_farms_irrigation['endtime']) - pd.to_datetime(df_wc_farms_irrigation['inittime'])
     return df_wc_farms_irrigation
 
-def process_data_real_irrigation(data_wc_farms_realirrigation):
+def process_data_real_irrigation(data_wc_farms_realirrigation, farmid):
     df_wc_farms_realirrigation = pd.DataFrame(data_wc_farms_realirrigation)
+    df_wc_farms_realirrigation['farmid'] = farmid
     df_wc_farms_realirrigation[["volume_m3", "volume1", "volume2"]] = df_wc_farms_realirrigation['volume'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
     df_wc_farms_realirrigation[["precipitation_mm", "precipitation2", "precipitation3"]] = df_wc_farms_realirrigation['precipitation'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
     df_wc_farms_realirrigation[["flow_m3_h", "th2", "th3"]] = df_wc_farms_realirrigation['flow'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
