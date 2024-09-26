@@ -28,7 +28,8 @@ def manage_data(processed_data, data_type):
             try:
                 created_at = item['created_at']
                 sensor_id = item['sensor_id']
-                farm_id = item.get('farm_id')  
+                farm_id = item.get('farm_id')
+                zoneid = item.get('zoneid')  
 
                 if farm_id == "14245":
                     existing_record = WCZonesSensors.query.filter_by(
@@ -44,7 +45,8 @@ def manage_data(processed_data, data_type):
                             values=item["values"],
                             created_at=created_at,
                             date=item["date"],
-                            hour=item["hour"]
+                            hour=item["hour"],
+                            zoneid=zoneid
                         )
                         records_to_add.append(new_record)
 
@@ -62,7 +64,8 @@ def manage_data(processed_data, data_type):
                             values=item["values"],
                             created_at=created_at,
                             date=item["date"],
-                            hour=item["hour"]
+                            hour=item["hour"],
+                            zoneid=zoneid
                         )
                         records_to_add.append(new_record)
 
