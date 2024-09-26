@@ -96,7 +96,7 @@ def process_data_measures(data_measures):
     df = pd.DataFrame(data_measures)
     df['unit'] = df['unit'].fillna('N/A')
     df_unique = df.drop_duplicates(subset=['id'])
-    processed_items = df_unique[['id', 'name', 'unit']].rename(columns={'id': 'sensor_id'}).to_dict(orient='records')
+    processed_items = df_unique[['id', 'name', 'unit', 'zoneId']].rename(columns={'id': 'sensor_id', 'zoneId': 'zoneid'}).to_dict(orient='records')
     unique_ids = df_unique['id'].tolist()
     return {
         "unique_ids": unique_ids,
