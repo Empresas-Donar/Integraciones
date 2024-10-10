@@ -11,9 +11,9 @@ def manage_data(processed_data, data_type):
         'zones': WC_Farms_Zones,
         'irrigations': WCFarmsIrrigation,
         'realirrigations': WCFarmsRealIrrigation,
-        'zones_imaipo': WC_Farms_Zones_IMaipo,
-        'irrigations_imaipo': WCFarmsIrrigation_imaipo,
-        'realirrigations_imaipo': WCFarmsRealIrrigation_imaipo,
+        'zones_imaipo': WC_Farms_Zones,
+        'irrigations_imaipo': WCFarmsIrrigation,
+        'realirrigations_imaipo': WCFarmsRealIrrigation,
     }
     
     model = model_mapping.get(data_type)
@@ -82,7 +82,13 @@ def manage_data(processed_data, data_type):
                 print(f"Error inserting records: {e}")
 
     elif data_type in ['zones', 'zones_imaipo']:
-        db.session.query(model).delete()
+        
+        farmid = int(processed_data['farmid'].iloc[0]) 
+        print(f"Eliminando registros de {data_type} con farmid={farmid}")
+
+        db.session.query(model).filter_by(farmid=farmid).delete()
+        db.session.commit()
+
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
         for item in data_dict:
