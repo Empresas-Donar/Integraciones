@@ -16,19 +16,19 @@ endpoints_config = {
     },
     "irrigations": {
         "url": "https://api.wiseconn.com/farms/14245/irrigations",
-        "process_function": process_data_irrigation
+        "process_function": lambda data: process_data_irrigation(data, 14245)
     },
     "irrigations_imaipo": {
         "url": "https://api.wiseconn.com/farms/60544/irrigations",
-        "process_function": process_data_irrigation
+        "process_function": lambda data: process_data_irrigation(data, 60544)
     },
     'realirrigations': {
         "url": "https://api.wiseconn.com/farms/14245/realIrrigations",
-        "process_function": process_data_real_irrigation
+        "process_function": lambda data: process_data_real_irrigation(data, 14245)
     },
     'realirrigations_imaipo': {
         "url": "https://api.wiseconn.com/farms/60544/realIrrigations",
-        "process_function": process_data_real_irrigation
+        "process_function": lambda data: process_data_real_irrigation(data, 60544)
     },
     "measures": {
         "url": "https://api.wiseconn.com/farms/14245/measures",
@@ -47,7 +47,7 @@ api_key = os.getenv('API_KEY')
 
 def fetch_data(endpoint_key, sensor_id=None):
     today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=1)
+    yesterday = today - datetime.timedelta(days=10)
     config = endpoints_config[endpoint_key]
     headers = {"api_key": api_key}  
     params = config.get("params", {})
