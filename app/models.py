@@ -106,18 +106,8 @@ class WCZonesSensors(db.Model):
     date = db.Column(db.Date, nullable=True) 
     hour = db.Column(db.Time, nullable=True)
     zoneid = db.Column(db.String(50), nullable=True)
+    farmid = db.Column(db.String(50), nullable=True)
 
-class WCZonesSensors_imaipo(db.Model):
-    __tablename__ = 'wc_zones_sensors_imaipo'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sensor_id = db.Column(db.String, primary_key=True)
-    name = db.Column(db.Text)
-    unit = db.Column(db.Text) 
-    values = db.Column(db.Float, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=True)
-    date = db.Column(db.Date, nullable=True) 
-    hour = db.Column(db.Time, nullable=True)
-    zoneid = db.Column(db.String(50), nullable=True)        
 
 class UbibotChannels(db.Model):
     __tablename__ = 'ubi_channel_data'
