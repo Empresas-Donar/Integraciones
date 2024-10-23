@@ -11,24 +11,54 @@ zone_id_dict = {}
 
 def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones = pd.DataFrame(data_wc_farms_zones)
+    
+    # Depurar: imprimir las primeras filas para asegurar que los datos están correctos
+    print("Datos de zonas originales:", df_wc_farms_zones.head())
+
     if 'AFPressureId' in df_wc_farms_zones.columns:
         df_wc_farms_zones.drop('AFPressureId', axis=1, inplace=True)
     if 'BFPressureId' in df_wc_farms_zones.columns:
         df_wc_farms_zones.drop('BFPressureId', axis=1, inplace=True)
+    
     df_wc_farms_zones[['irrigation_max', 'irrigation_min', 'irrigation_avg', 'irrigation_std']] = df_wc_farms_zones['irrigationScheduleStats'].apply(pd.Series)[['max', 'min', 'avg', 'std']]
     df_wc_farms_zones.drop('irrigationScheduleStats', axis = 1, inplace= True)
+    
     df_wc_farms_zones['bounds'] = df_wc_farms_zones['polygon'].apply(lambda x: x['bounds'] if pd.notna(x) and 'bounds' in x else None)
     df_bounds_farms_zones = df_wc_farms_zones['bounds'].apply(pd.Series)
     df_wc_farms_zones = pd.concat([df_wc_farms_zones, df_bounds_farms_zones], axis=1)
+    
     df_wc_farms_zones['southWest_lng'] = df_wc_farms_zones['southWest'].apply(lambda x: x['lng'] if isinstance(x, dict) else None)
     df_wc_farms_zones['southWest_lat'] = df_wc_farms_zones['southWest'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
     df_wc_farms_zones['northEast_lng'] = df_wc_farms_zones['northEast'].apply(lambda x: x['lng'] if isinstance(x, dict) else None)
     df_wc_farms_zones['northEast_lat'] = df_wc_farms_zones['northEast'].apply(lambda x: x['lat'] if isinstance(x, dict) else None)
+    
     df_wc_farms_zones.drop(["bounds", "southWest", "northEast", "polygon" , "areaUnit", "unitTheoreticalFlow", "metadata", "onlyMonitoring", "allowPumpSelection"], axis = 1, inplace = True)
-    df_wc_farms_zones.rename(columns = {"area" : "area_m2", "theoreticalFlow" : "theoreticalflowm3h", "farmId": "farmid", "pumpSystemId": "pumpsystemid", "humidityRetention": "humidityretention", "criticalPoint1": "criticalpoint1", "criticalPoint2": "criticalpoint2", "criticalPoint3": "criticalpoint3", "criticalPoint4": "criticalpoint4", "soilMode": "soilmode", "pumpIds": "pumpids", "predefinedPumps": "predefinedpumps", "southWest_lng": "southwest_lng", "southWest_lat": "southwest_lat", "northEast_lng": "northeast_lng", "northEast_lat": "northeast_lat"}, inplace = True)
+    
+    df_wc_farms_zones.rename(columns = {
+        "area" : "area_m2", 
+        "theoreticalFlow" : "theoreticalflowm3h", 
+        "farmId": "farmid", 
+        "pumpSystemId": "pumpsystemid", 
+        "humidityRetention": "humidityretention", 
+        "criticalPoint1": "criticalpoint1", 
+        "criticalPoint2": "criticalpoint2", 
+        "criticalPoint3": "criticalpoint3", 
+        "criticalPoint4": "criticalpoint4", 
+        "soilMode": "soilmode", 
+        "pumpIds": "pumpids", 
+        "predefinedPumps": "predefinedpumps", 
+        "southWest_lng": "southwest_lng", 
+        "southWest_lat": "southwest_lat", 
+        "northEast_lng": "northeast_lng", 
+        "northEast_lat": "northeast_lat"
+    }, inplace = True)
+
     df_wc_farms_zones['created_at'] = pd.Timestamp.now()
     df_wc_farms_zones['date'] = df_wc_farms_zones['created_at'].dt.date
     df_wc_farms_zones['hour'] = df_wc_farms_zones['created_at'].dt.time
+    
+    print("Datos de zonas procesados:", df_wc_farms_zones.head())
+    print("columnas: ", df_wc_farms_zones.columns )
     return df_wc_farms_zones
 
 def process_data_irrigation(data_wc_farms_irrigation, farmid):
@@ -105,23 +135,29 @@ def process_data_measures(data_measures):
         "processed_items": processed_items
     }
 
-def process_sensor_data(data):
+def process_sensor_data(data, farmId):
     chile_tz = pytz.timezone('America/Santiago')
     processed_data = {
         "values": []
     }
+    farmId_str = str(farmId)  # Convertir farmId a cadena
+
     for item in data:
         if "time" in item and item["time"]:
             time_obj = pd.to_datetime(item["time"])
         else:
             time_obj = datetime.now(chile_tz)
+        
         value = item.get("value", float('nan'))
+
         processed_data["values"].append({
             "created_at": time_obj,
             "date": time_obj.date(),
             "hour": time_obj.time(),
-            "value": value
+            "value": value,
+            "farmid": farmId_str  # Usar farmId como cadena
         })
+    
     return processed_data
 
 def clean_channel_data(data_ubi_channels):
