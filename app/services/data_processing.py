@@ -11,9 +11,6 @@ zone_id_dict = {}
 
 def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones = pd.DataFrame(data_wc_farms_zones)
-    
-    # Depurar: imprimir las primeras filas para asegurar que los datos están correctos
-    print("Datos de zonas originales:", df_wc_farms_zones.head())
 
     if 'AFPressureId' in df_wc_farms_zones.columns:
         df_wc_farms_zones.drop('AFPressureId', axis=1, inplace=True)
@@ -37,7 +34,7 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones.rename(columns = {
         "area" : "area_m2", 
         "theoreticalFlow" : "theoreticalflowm3h", 
-        "farmId": "farmid", 
+        "farmId": "farm_id", 
         "pumpSystemId": "pumpsystemid", 
         "humidityRetention": "humidityretention", 
         "criticalPoint1": "criticalpoint1", 
@@ -56,15 +53,12 @@ def process_data_wc_farms_zones(data_wc_farms_zones):
     df_wc_farms_zones['created_at'] = pd.Timestamp.now()
     df_wc_farms_zones['date'] = df_wc_farms_zones['created_at'].dt.date
     df_wc_farms_zones['hour'] = df_wc_farms_zones['created_at'].dt.time
-    
-    print("Datos de zonas procesados:", df_wc_farms_zones.head())
-    print("columnas: ", df_wc_farms_zones.columns )
     return df_wc_farms_zones
 
-def process_data_irrigation(data_wc_farms_irrigation, farmid):
+def process_data_irrigation(data_wc_farms_irrigation, farm_id):
     df_wc_farms_irrigation = pd.DataFrame(data_wc_farms_irrigation)
-    df_wc_farms_irrigation['farmid'] = farmid
-    df_wc_farms_irrigation.rename(columns = {"initTime": "inittime", "endTime": "endtime", "irrigationType": "irrigationtype", "pumpSystemId": "pumpsystemid", "pumpIds": "pumpids", "zoneId": "zoneid", "sentToNetwork": "senttonetwork", "scheduledType": "scheduledtype", "groupingName": "groupingname"}, inplace = True)
+    df_wc_farms_irrigation['farm_id'] = farm_id
+    df_wc_farms_irrigation.rename(columns = {"initTime": "inittime", "endTime": "endtime", "irrigationType": "irrigationtype", "pumpSystemId": "pumpsystemid", "pumpIds": "pumpids", "zoneId": "zone_id", "sentToNetwork": "senttonetwork", "scheduledType": "scheduledtype", "groupingName": "groupingname"}, inplace = True)
     df_wc_farms_irrigation[["volume m3" , "volume2"]] = df_wc_farms_irrigation['volume'].apply(pd.Series)[["value", "unitAbrev"]]
     df_wc_farms_irrigation[["precipitation mm" , "precipitation2"]] = df_wc_farms_irrigation['precipitation'].apply(pd.Series)[["value", "unitAbrev"]]
     df_wc_farms_irrigation[["theoricalFlow m3/h" , "th2"]] = df_wc_farms_irrigation['theoricalFlow'].apply(pd.Series)[["value", "unitAbrev"]]
@@ -78,25 +72,27 @@ def process_data_irrigation(data_wc_farms_irrigation, farmid):
     df_wc_farms_irrigation['delta_time'] = pd.to_datetime(df_wc_farms_irrigation['endtime']) - pd.to_datetime(df_wc_farms_irrigation['inittime'])
     return df_wc_farms_irrigation
 
-def process_data_real_irrigation(data_wc_farms_realirrigation, farmid):
+def process_data_real_irrigation(data_wc_farms_realirrigation, farm_id):
     df_wc_farms_realirrigation = pd.DataFrame(data_wc_farms_realirrigation)
-    df_wc_farms_realirrigation['farmid'] = farmid
+    df_wc_farms_realirrigation['farm_id'] = farm_id
     df_wc_farms_realirrigation[["volume_m3", "volume1", "volume2"]] = df_wc_farms_realirrigation['volume'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
     df_wc_farms_realirrigation[["precipitation_mm", "precipitation2", "precipitation3"]] = df_wc_farms_realirrigation['precipitation'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
     df_wc_farms_realirrigation[["flow_m3_h", "th2", "th3"]] = df_wc_farms_realirrigation['flow'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
     df_wc_farms_realirrigation[['instantaneous_flow_m3_h', "instantaneousFlow1", "instantaneousFlow2"]] = df_wc_farms_realirrigation['instantaneousFlow'].apply(pd.Series)[["value", "unitName", "unitAbrev"]]
 
     df_wc_farms_realirrigation.drop(["volume1", "volume2", "precipitation2", "precipitation3", "th2", "th3", "instantaneousFlow1", "instantaneousFlow2", 
-                                      "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", 
-                                      "stoppedByUser", "fertigations", "phControl", "alarms", "hydraulics"], axis=1, inplace=True)
+                                     "volume", "precipitation", "flow", "instantaneousFlow", "type", "BFPressure", "AFPressure", "instantaneousPressure", 
+                                     "stoppedByUser", "fertigations", "phControl", "alarms", "hydraulics"], axis=1, inplace=True)
 
     df_wc_farms_realirrigation.rename(columns={"initTime": "init_time", "endTime": "end_time", "zoneId": "zone_id", 
                                                "pumpSystemId": "pump_system_id", "scheduledIrrigationId": "scheduled_irrigation_id"}, inplace=True)
-
-    df_wc_farms_realirrigation['created_at'] = pd.to_datetime(df_wc_farms_realirrigation['init_time'])
+    df_wc_farms_realirrigation['init_time'] = pd.to_datetime(df_wc_farms_realirrigation['init_time'], errors='coerce')
+    df_wc_farms_realirrigation['end_time'] = pd.to_datetime(df_wc_farms_realirrigation['end_time'], errors='coerce')
+    df_wc_farms_realirrigation['created_at'] = df_wc_farms_realirrigation['init_time']
     df_wc_farms_realirrigation['date'] = df_wc_farms_realirrigation['created_at'].dt.date
     df_wc_farms_realirrigation['hour'] = df_wc_farms_realirrigation['created_at'].dt.time
-    df_wc_farms_realirrigation['delta_time'] = pd.to_datetime(df_wc_farms_realirrigation['end_time']) - pd.to_datetime(df_wc_farms_realirrigation['init_time'])
+    df_wc_farms_realirrigation['delta_time'] = df_wc_farms_realirrigation['end_time'] - df_wc_farms_realirrigation['init_time']
+
     def get_pressure_measure_id(measures):
         for measure in measures:
             if measure.get('sensorType') == 'Pressure':
@@ -104,6 +100,7 @@ def process_data_real_irrigation(data_wc_farms_realirrigation, farmid):
         return None
 
     df_wc_farms_realirrigation['pressure_measure_id'] = df_wc_farms_realirrigation['measures'].apply(get_pressure_measure_id)
+
     def fetch_pressure(measure_id, init_time, end_time):
         from .wiseconn import fetch_data 
         if measure_id:
@@ -118,8 +115,10 @@ def process_data_real_irrigation(data_wc_farms_realirrigation, farmid):
                         return df_filtered['value'].iloc[0]  
                 
         return None  
+
     df_wc_farms_realirrigation['pressure'] = df_wc_farms_realirrigation.apply(
-        lambda row: fetch_pressure(row['pressure_measure_id'], row['init_time'], row['end_time']), axis=1)
+        lambda row: fetch_pressure(row['pressure_measure_id'], row['init_time'], row['end_time']), axis=1
+    )
     df_wc_farms_realirrigation.drop('pressure_measure_id', axis=1, inplace=True)
 
     return df_wc_farms_realirrigation
@@ -128,7 +127,7 @@ def process_data_measures(data_measures):
     df = pd.DataFrame(data_measures)
     df['unit'] = df['unit'].fillna('N/A')
     df_unique = df.drop_duplicates(subset=['id'])
-    processed_items = df_unique[['id', 'name', 'unit', 'zoneId']].rename(columns={'id': 'sensor_id', 'zoneId': 'zoneid'}).to_dict(orient='records')
+    processed_items = df_unique[['id', 'name', 'unit', 'zoneId']].rename(columns={'id': 'sensor_id', 'zoneId': 'zone_id'}).to_dict(orient='records')
     unique_ids = df_unique['id'].tolist()
     return {
         "unique_ids": unique_ids,
@@ -140,9 +139,9 @@ def process_sensor_data(data, farmId):
     processed_data = {
         "values": []
     }
-    farmId_str = str(farmId)  # Convertir farmId a cadena
-
+    farmId_str = str(farmId)
     for item in data:
+
         if "time" in item and item["time"]:
             time_obj = pd.to_datetime(item["time"])
         else:
@@ -155,9 +154,9 @@ def process_sensor_data(data, farmId):
             "date": time_obj.date(),
             "hour": time_obj.time(),
             "value": value,
-            "farmid": farmId_str  # Usar farmId como cadena
+            "farm_id": farmId_str
         })
-    
+
     return processed_data
 
 def clean_channel_data(data_ubi_channels):
@@ -183,23 +182,19 @@ def clean_channel_data(data_ubi_channels):
 
 def clean_channel_data_summary(data_ubi_summary, channel_id):
     if channel_id is None:
-        print("Error: 'channel_id' no puede ser None.")
         return
-    
     if isinstance(data_ubi_summary, list):
         data_ubi_summary = pd.json_normalize(data_ubi_summary)
     elif isinstance(data_ubi_summary, dict):
         data_ubi_summary = pd.DataFrame([data_ubi_summary])    
     
     if data_ubi_summary.empty:
-        print("Advertencia: 'data_ubi_summary' está vacío.")
         return data_ubi_summary
 
     if 'id' not in data_ubi_summary.columns:
         data_ubi_summary['id'] = [uuid.uuid4().hex for _ in range(len(data_ubi_summary))]   
     
     data_ubi_summary['channel_id'] = channel_id
-    print(data_ubi_summary[['channel_id']].head())
     data_ubi_summary.columns = data_ubi_summary.columns.str.replace('.', '_')
     
     data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'], utc=True)
@@ -226,9 +221,7 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
     columns_to_drop = [f'{field}_{metric}' for field in expected_fields for metric in ['sum', 'sd']]
     data_ubi_summary.drop(columns=[col for col in columns_to_drop if col in data_ubi_summary.columns], inplace=True)
     
-    print(f"Número de filas antes de dropna: {len(data_ubi_summary)}")
     data_ubi_summary = data_ubi_summary.dropna(subset=['channel_id', 'created_at'])
-    print(f"Número de filas después de dropna: {len(data_ubi_summary)}")
 
     if data_ubi_summary['created_at'].isnull().any():
         print("Advertencia: Algunas filas tienen 'created_at' nulo después de la conversión.")
