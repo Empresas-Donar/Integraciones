@@ -18,7 +18,7 @@ class WC_Farms_Zones(db.Model):
     latitude = db.Column(db.Text)
     longitude = db.Column(db.Text)
     type = db.Column(db.Text)
-    farmid = db.Column(db.Integer)
+    farm_id = db.Column(db.Integer)
     pumpsystemid = db.Column(db.Float)
     kc = db.Column(db.Integer)
     theoreticalflowm3h = db.Column(db.Float)  
@@ -47,7 +47,7 @@ class WC_Farms_Zones(db.Model):
 class WCFarmsIrrigation(db.Model):
     __tablename__ = 'wc_farms_irrigation'
     id = db.Column(db.Integer, primary_key=True)
-    farmid = db.Column(db.Integer, nullable=False)
+    farm_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True)
     hour = db.Column(db.Time, nullable=True)
@@ -58,7 +58,7 @@ class WCFarmsIrrigation(db.Model):
     irrigationtype = db.Column(db.Text)
     pumpsystemid = db.Column(db.Integer)
     pumpids = db.Column(db.Text)
-    zoneid = db.Column(db.Integer)
+    zone_id = db.Column(db.Integer)
     senttonetwork = db.Column(db.Boolean)
     scheduledtype = db.Column(db.Text)
     hydraulics = db.Column(db.Text)
@@ -77,7 +77,7 @@ class ExecutionLog(db.Model):
 class WCFarmsRealIrrigation(db.Model):
     __tablename__ = 'wc_farms_realirrigation'
     id = db.Column(db.Integer, primary_key=True)
-    farmid = db.Column(db.Integer, nullable=False)
+    farm_id = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True)
     hour = db.Column(db.Time, nullable=True)
@@ -105,8 +105,8 @@ class WCZonesSensors(db.Model):
     created_at = db.Column(db.DateTime, nullable=True)
     date = db.Column(db.Date, nullable=True) 
     hour = db.Column(db.Time, nullable=True)
-    zoneid = db.Column(db.String(50), nullable=True)
-    farmid = db.Column(db.String(50), nullable=True)
+    zone_id = db.Column(db.String(50), nullable=True)
+    farm_id = db.Column(db.String(50), nullable=True)
 
 
 class UbibotChannels(db.Model):
