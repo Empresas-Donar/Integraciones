@@ -17,9 +17,7 @@ endpoints_config = {
 }
 
 def fetch_data_with_retries(url, headers, params, retries=3, delay=5):
-    """
-    Fetch data from the given URL with retry mechanism in case of 500 Internal Server Error.
-    """
+
     for attempt in range(retries):
         try:
             response = requests.get(url, headers=headers, params=params)
@@ -38,17 +36,13 @@ def fetch_data_with_retries(url, headers, params, retries=3, delay=5):
 def fetch_data(endpoint_key, sensor_id=None):
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1) 
-    future_day = today + datetime.timedelta(days=1)  
-
     config = endpoints_config[endpoint_key]
     headers = {"api_key": api_key}
     params = config.get("params", {})
     
-    print(f"Today's date: {today}, Yesterday's date: {yesterday}, Future day: {future_day}")
-
     if "irrigations" in endpoint_key or "realirrigations" in endpoint_key or endpoint_key == "sensor_data":
         params["initTime"] = yesterday.strftime("%Y-%m-%d")
-        params["endTime"] = future_day.strftime("%Y-%m-%d") 
+        params["endTime"] = today.strftime("%Y-%m-%d") 
 
     if endpoint_key == "sensor_data" and sensor_id:
         url = config["url_template"].format(sensor_id=sensor_id)
@@ -59,9 +53,7 @@ def fetch_data(endpoint_key, sensor_id=None):
     return response
 
 def generate_farm_endpoints(farms_data):
-    """
-    Genera automáticamente los endpoints para cada farm usando sus farm IDs.
-    """
+
     for farm in farms_data:
         farmid = farm['id']
         
@@ -71,17 +63,16 @@ def generate_farm_endpoints(farms_data):
         }
         endpoints_config[f"irrigations_{farmid}"] = {
             "url": f"https://api.wiseconn.com/farms/{farmid}/irrigations",
-            "process_function": lambda data, farmid=farmid: process_data_irrigation(data, farmid)
+            "process_function": lambda data, farm_id=farmid: process_data_irrigation(data, farm_id)
         }
         endpoints_config[f"realirrigations_{farmid}"] = {
             "url": f"https://api.wiseconn.com/farms/{farmid}/realIrrigations",
-            "process_function": lambda data, farmid=farmid: process_data_real_irrigation(data, farmid)
+            "process_function": lambda data, farm_id=farmid: process_data_real_irrigation(data, farm_id)
         }
         endpoints_config[f"measures_{farmid}"] = {
             "url": f"https://api.wiseconn.com/farms/{farmid}/measures",
             "process_function": process_data_measures
         }
-    print(f"Endpoints generated for {len(farms_data)} farms.")
 
 def run_fetch_process():
     results = []
@@ -90,28 +81,21 @@ def run_fetch_process():
 
     try:
         
-        print("Fetching farm IDs from endpoint...")
         farms_data = fetch_data("farms")
         if farms_data:
-            print(f"Data fetched successfully from {endpoints_config['farms']['url']}")
-            print(f"Fetched {len(farms_data)} farms.")
             generate_farm_endpoints(farms_data) 
 
         
         for measure_type in [key for key in endpoints_config.keys() if key.startswith("measures_")]:
-            print(f"Fetching data for measure_type: {measure_type}")
             measures_data = fetch_data(measure_type)
             if measures_data:
-                print(f"Data fetched successfully for measure_type: {measure_type}, processing...")
                 processed_measures = endpoints_config[measure_type]["process_function"](measures_data)
                 unique_ids = processed_measures["unique_ids"]
                 farmId = measure_type.split('_')[-1]
 
                 for sensor_id in unique_ids:
-                    print(f"Fetching sensor data for sensor_id: {sensor_id}, farm_id: {farmId}")
                     sensor_data = fetch_data("sensor_data", sensor_id)
                     if sensor_data:
-                        print(f"Data fetched successfully from url_template for sensor_id: {sensor_id}")
                         processed_sensor_data = endpoints_config["sensor_data"]["process_function"](sensor_data, farmId)
                         matching_measure = next(
                             (item for item in processed_measures["processed_items"] if item["sensor_id"] == sensor_id),
@@ -127,18 +111,15 @@ def run_fetch_process():
                             matching_measure["created_at"] = processed_sensor_data["values"][0].get("created_at", None)
                             matching_measure["date"] = processed_sensor_data["values"][0].get("date", None)
                             matching_measure["hour"] = processed_sensor_data["values"][0].get("hour", None)
-                            matching_measure["farmid"] = farmId
+                            matching_measure["farm_id"] = farmId
                             combined_data.append(matching_measure)
 
         if combined_data:
-            print(f"Appending combined sensor data for {len(combined_data)} measures.")
             results.append((combined_data, "combined_measures_sensor_data"))
 
         for key in [key for key in endpoints_config.keys() if key.startswith(("zones_", "irrigations_", "realirrigations_"))]:
-            print(f"Fetching data for key: {key}")
             data = fetch_data(key)
             if data:
-                print(f"Data fetched successfully for {key}, processing...")
                 processed_data = endpoints_config[key]["process_function"](data)
                 results.append((processed_data, key))
             else:
