@@ -7,8 +7,6 @@ from app import db
 import json
 
 def manage_data(processed_data, data_type):
-    print(f"Procesando data_type: {data_type}")
-    print(f"Datos procesados recibidos, tamaño: {len(processed_data)}")
 
     model_mapping = {
         'zones': WC_Farms_Zones,
@@ -19,9 +17,7 @@ def manage_data(processed_data, data_type):
         'realirrigations_imaipo': WCFarmsRealIrrigation,
     }
     
-    data_type = data_type.split('_')[0]
-    print(f"Data type después del split: {data_type}")
-    
+    data_type = data_type.split('_')[0]  
     model = model_mapping.get(data_type)
     
     if not model and data_type != "combined":
@@ -29,10 +25,9 @@ def manage_data(processed_data, data_type):
         return
     
     if data_type == "combined":
-        print("Procesando combined_measures_sensor_data")
+
         records_to_add = []
-        print(f"Recibidos {len(processed_data)} registros")
-        print("Últimas 10 fechas recibidas:")
+
         for item in processed_data[-10:]:  
             print(f"Sensor ID: {item.get('sensor_id')}, Fecha: {item.get('created_at')}")
 
@@ -40,28 +35,25 @@ def manage_data(processed_data, data_type):
             try:
                 created_at = item.get('created_at')
                 sensor_id = item.get('sensor_id')
-                farmid = str(item.get('farmid')) 
-                zoneid = item.get('zoneid')
+                farm_id = str(item.get('farm_id'))  
+                zone_id = item.get('zone_id')
 
-                if pd.isna(zoneid):
-                    zoneid = None
+                if pd.isna(zone_id):
+                    zone_id = None
                 else:
-                    zoneid = str(zoneid)  
+                    zone_id = str(zone_id)  
 
-                if len(farmid) > 50:
-                    print(f"WARNING: El farmid {farmid} excede los 50 caracteres para sensor ID: {sensor_id}")    
-
-                print(f"Procesando sensor: {sensor_id}, farm_id: {farmid}, zoneid: {zoneid}, created_at: {created_at}")
+                if len(farm_id) > 50:
+                    print(f"WARNING: El farm_id {farm_id} excede los 50 caracteres para sensor ID: {sensor_id}")    
 
                 existing_record = WCZonesSensors.query.filter_by(
                     created_at=created_at,
                     sensor_id=sensor_id,
-                    farmid=farmid,
-                    zoneid=zoneid
+                    farm_id=farm_id,
+                    zone_id=zone_id
                 ).first()
 
                 if not existing_record:
-                    print(f"Agregando nuevo record para sensor: {sensor_id}")
                     new_record = WCZonesSensors(
                         sensor_id=sensor_id,
                         name=item.get("name"),
@@ -70,30 +62,27 @@ def manage_data(processed_data, data_type):
                         created_at=created_at,
                         date=item.get("date"),
                         hour=item.get("hour"),
-                        zoneid=zoneid,
-                        farmid=farmid  
+                        zone_id=zone_id,
+                        farm_id=farm_id  
                     )
                     records_to_add.append(new_record)
 
             except KeyError as e:
                 print(f"Error: Falta la clave {e} en el registro {item}")
 
-        print(f"Registros para insertar: {len(records_to_add)}")
         if records_to_add:
             try:
-                print(f"Insertando {len(records_to_add)} registros en la base de datos...")
+
                 db.session.bulk_save_objects(records_to_add)
                 db.session.commit()
-                print(f"{len(records_to_add)} nuevos registros insertados en las tablas correspondientes.")
             except Exception as e:
                 db.session.rollback()
                 print(f"Error inserting records: {e}")
 
     elif data_type in ['zones', 'zones_imaipo']:
-        farmid = int(processed_data['farmid'].iloc[0]) 
-        db.session.query(model).filter_by(farmid=farmid).delete()
+        farm_id = int(processed_data['farm_id'].iloc[0]) 
+        db.session.query(model).filter_by(farm_id=farm_id).delete()  
         db.session.commit()
-
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
     
@@ -116,14 +105,24 @@ def manage_data(processed_data, data_type):
             print(f"Error al insertar en la base de datos para {data_type}: {e}")
 
     else:
-        existing_ids = set(id[0] for id in db.session.query(model.id).all())
+        existing_records = {id_: status for id_, status in db.session.query(model.id, model.status).all()}
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
+
         for item in data_dict:
-            if 'id' in item and item['id'] not in existing_ids:
+            record_id = item.get('id')
+
+            if record_id in existing_records:
+                if existing_records[record_id] == "Running":
+                    db.session.query(model).filter_by(id=record_id).delete()
+                    instance = model(**item)
+                    db.session.add(instance)
+
+            else:
                 instance = model(**item)
                 db.session.add(instance)
                 new_data.append(item)
+
         try:
             db.session.commit()
             print(f"{len(new_data)} nuevos registros insertados en {data_type}.")
