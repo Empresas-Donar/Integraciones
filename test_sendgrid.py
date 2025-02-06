@@ -26,18 +26,13 @@ def send_email_if_not_empty(subject, content):
 
 
 send_email_if_not_empty(
-    "Reporte de Canales Z y K",
-    "Canales con prefijos Z y K:\n" + "\n".join(z_k_channels)
+    "Reporte de Canales Zuñiga y Kontrolag",
+    "Canales con prefijos Z y K:\n" + "\n".join(z_k_channels + other_channels)
 )
 
 send_email_if_not_empty(
-    "Reporte de Canales T e I",
+    "Reporte de Canales Talagante e Isla de Maipo",
     "Canales con prefijos T e I:\n" + "\n".join(t_i_channels)
-)
-
-send_email_if_not_empty(
-    "Reporte de Otros Canales",
-    "Otros canales:\n" + "\n".join(other_channels)
 )
 
 session.close()
