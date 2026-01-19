@@ -1,6 +1,12 @@
 import logging
 import time
-import psutil  
+import psutil
+from dotenv import load_dotenv
+
+# Load .env.local first (for local dev overrides), then .env
+load_dotenv('.env.local')
+load_dotenv()
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app import create_app, db
 from app.services.wiseconn import run_fetch_process
