@@ -1,41 +1,61 @@
-name: Deploy to Lightsail
+name: Deploy to Cloud Run Jobs
 
 on:
   push:
     branches:
-      - main
+      - feat/google-cloud-integration  # Rama de pruebas
+      # - main  # Descomentar cuando esté listo para producción
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  # Nombre del job diferente para staging vs producción
+  JOB_NAME: integraciones-job-staging
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.6.0
-      with:
-        ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-    - name: Ensure deployment directory exists
-      run: ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 'mkdir -p /home/ubuntu/integracionwiseconn'
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
 
-    - name: Copy files via SCP
-      run: scp -r -o StrictHostKeyChecking=no ./* ubuntu@18.117.28.235:/home/ubuntu/integracionwiseconn
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-    - name: Install dependencies
-      run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 << 'EOF'
-        cd /home/ubuntu/integracionwiseconn
-        sudo pip3 install -r requirements.txt
-        exit
-        EOF
+      - name: Build and Push Docker image
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }} .
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:latest .
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:latest
 
-    - name: SSH and restart service
-      run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@18.117.28.235 << 'EOF'
-        cd /home/ubuntu/integracionwiseconn
-        sudo systemctl restart integracionwiseconn.service
-        exit
-        EOF
+      - name: Deploy to Cloud Run Jobs
+        run: |
+          gcloud run jobs deploy ${{ env.JOB_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 30m \
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,API_KEY=API_KEY:latest,SECRET_KEY=SECRET_KEY:latest,UBIBOT_ACCOUNT_KEY=UBIBOT_ACCOUNT_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest" \
+            --set-env-vars "ENV=production"
+
+      - name: Output Job URL
+        run: |
+          echo "Job deployed successfully!"
+          echo "View job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.JOB_NAME }}"

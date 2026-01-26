@@ -16,3 +16,7 @@ venv/
 # Database
 *.db
 instance/
+git-crypt-integraciones
+
+# Google Cloud
+.gcloudignore
