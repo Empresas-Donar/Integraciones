@@ -53,7 +53,7 @@ jobs:
             --max-retries 1 \
             --task-timeout 60m \
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,API_KEY=API_KEY:latest,SECRET_KEY=SECRET_KEY:latest,UBIBOT_ACCOUNT_KEY=UBIBOT_ACCOUNT_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest" \
-            --set-env-vars "ENV=production"
+            --set-env-vars "ENV=production,TZ=America/Santiago"
 
       - name: Output Job URL
         run: |
