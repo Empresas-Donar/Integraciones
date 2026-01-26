@@ -20,3 +20,7 @@ git-crypt-integraciones
 
 # Google Cloud
 .gcloudignore
+
+# Logs
+*.log
+updates.log
