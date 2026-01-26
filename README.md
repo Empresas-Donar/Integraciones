@@ -7,10 +7,11 @@ Agricultural irrigation management system that integrates sensor data from Wisec
 2. [Environment Setup](#environment-setup)
 3. [Development vs Production](#development-vs-production)
 4. [Git-Crypt Setup](#git-crypt-setup)
-5. [Usage](#usage)
-6. [API Documentation](#api-documentation)
-7. [Database Schema](#database-schema)
-8. [Contributors](#contributors)
+5. [Google Cloud Deployment](#google-cloud-deployment)
+6. [Usage](#usage)
+7. [API Documentation](#api-documentation)
+8. [Database Schema](#database-schema)
+9. [Contributors](#contributors)
 
 ---
 
@@ -115,6 +116,95 @@ git-crypt export-key git-crypt-integraciones
 ```
 
 **Important:** Never commit the key file to git. It's already in `.gitignore`.
+
+---
+
+## Google Cloud Deployment
+
+The application runs on **Google Cloud Run Jobs** with automatic deployment via GitHub Actions.
+
+### Architecture
+
+| Component | Service | Region |
+|-----------|---------|--------|
+| Job Execution | Cloud Run Jobs | southamerica-west1 (Santiago) |
+| Docker Images | Artifact Registry | southamerica-west1 |
+| Secrets | Secret Manager | Global |
+| Scheduler | Cloud Scheduler | southamerica-east1 (São Paulo) |
+| Database | Cloud SQL PostgreSQL | southamerica-west1 |
+
+### Automatic Deployment (CI/CD)
+
+Push to `main` branch triggers automatic deployment:
+
+```
+Push to main → GitHub Actions → Build Docker → Push to Artifact Registry → Deploy to Cloud Run
+```
+
+The workflow is defined in `.github/workflows/deploy.yml`.
+
+### GitHub Secrets Required
+
+Configure these in GitHub → Settings → Secrets and variables → Actions:
+
+| Secret | Description |
+|--------|-------------|
+| `GCP_PROJECT_ID` | Google Cloud project ID (e.g., `integraciones-484915`) |
+| `WIF_PROVIDER` | Workload Identity Federation provider URL |
+| `WIF_SERVICE_ACCOUNT` | Service account email for GitHub Actions |
+
+### Google Cloud Secrets (Secret Manager)
+
+These secrets are stored in Google Cloud Secret Manager and injected at runtime:
+
+| Secret | Description |
+|--------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string (URL-encoded) |
+| `API_KEY` | Wiseconn API key |
+| `SECRET_KEY` | Flask secret key |
+| `UBIBOT_ACCOUNT_KEY` | Ubibot API key |
+| `SENDGRID_API_KEY` | SendGrid API key |
+
+### Scheduled Execution
+
+Cloud Scheduler runs the job automatically:
+- **Schedule**: Every hour at minute 0 (`0 * * * *`)
+- **Timezone**: America/Santiago (Chile)
+
+### Manual Execution
+
+```bash
+# Execute job manually
+gcloud run jobs execute integraciones-job-staging --region=southamerica-west1 --project=integraciones-484915
+
+# View execution logs
+gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=integraciones-job-staging" --project=integraciones-484915 --limit=50
+```
+
+### View in Console
+
+- **Jobs**: https://console.cloud.google.com/run/jobs?project=integraciones-484915
+- **Logs**: https://console.cloud.google.com/logs?project=integraciones-484915
+- **Scheduler**: https://console.cloud.google.com/cloudscheduler?project=integraciones-484915
+
+### Initial Setup (for new projects)
+
+See [SETUP_GCLOUD.md](SETUP_GCLOUD.md) for detailed instructions on:
+1. Enabling required APIs
+2. Creating Artifact Registry
+3. Setting up Secret Manager
+4. Configuring Workload Identity Federation for GitHub Actions
+5. Creating Cloud Scheduler
+
+### Cost Estimate
+
+| Service | Monthly Cost |
+|---------|-------------|
+| Cloud Run Jobs | ~$0-5 (pay per execution) |
+| Artifact Registry | ~$0.10/GB |
+| Secret Manager | ~$0.06/secret |
+| Cloud Scheduler | Free (first 3 jobs) |
+| **Total** | **~$1-5/month** |
 
 ---
 
@@ -364,15 +454,21 @@ Integraciones/
 │       ├── database_ubibot.py # Ubibot data persistence
 │       ├── data_processing.py # Data transformation
 │       └── utils.py         # Utility functions
+├── .github/
+│   └── workflows/
+│       └── deploy.yml       # GitHub Actions CI/CD
 ├── config.py                # Flask configuration
 ├── run.py                   # Main entry point
-├── task_scheduler.py        # APScheduler for cron jobs
+├── task_scheduler.py        # APScheduler for cron jobs (local)
+├── Dockerfile               # Container image for Cloud Run
+├── .dockerignore            # Files excluded from Docker build
 ├── requirements.txt         # Python dependencies
 ├── .env                     # Production credentials (encrypted)
 ├── .env.local               # Local dev overrides (not in git)
 ├── .env.example             # Template for new devs
 ├── .gitattributes           # Git-crypt config
-└── .gitignore               # Git ignore rules
+├── .gitignore               # Git ignore rules
+└── SETUP_GCLOUD.md          # Google Cloud setup instructions
 ```
 
 ---
