@@ -1,13 +1,12 @@
 import logging
 import time
 import psutil
-from dotenv import load_dotenv
-
-# Load .env.local first (for local dev overrides), then .env
-load_dotenv('.env.local')
-load_dotenv()
-
+import json
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Load environment and validate before any other imports
+from app.environment import ENV, is_production
 from app import create_app, db
 from app.services.wiseconn import run_fetch_process
 from app.services.ubibot import runubi_fetch_process
@@ -15,8 +14,6 @@ from app.services.database import manage_data
 from app.services.database_ubibot import manage_data_ubi, manage_fields_ubi
 from app.services.utils import create_channel_sensor_mapping, create_final_dataframe
 from app.models import ExecutionLog
-import json
-from datetime import datetime
 
 logging.basicConfig(level=logging.INFO,  
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -66,24 +63,27 @@ def main():
                 status_results[f"status_{source_name.lower()}"] = f"Error: {exc}"
 
 
-    status_wiseconn = status_results.get("status_wiseconn")
-    status_ubibot = status_results.get("status_ubibot")
-    
-    if status_ubibot.startswith("Success"):
-        with app.app_context():
+    status_wiseconn = status_results.get("status_wiseconn", "Error: No result")
+    status_ubibot = status_results.get("status_ubibot", "Error: No result")
+
+    with app.app_context():
+        # Process Ubibot fields if successful
+        if status_ubibot and status_ubibot.startswith("Success"):
             from app.services.data_processing import raw_data_ubi_channels, raw_df_summary
             raw_df_summary['channel_id'] = raw_df_summary['channel_id'].astype(int)
             channel_mapping = create_channel_sensor_mapping(raw_data_ubi_channels)
             final_df = create_final_dataframe(channel_mapping, raw_df_summary)
             manage_fields_ubi(final_df)
-            log = ExecutionLog(
-                status_wiseconn=status_wiseconn,
-                status_ubibot=status_ubibot,
-                date=datetime.utcnow()
-            )
-            db.session.add(log)
-            db.session.commit()
-            logging.info(f"Record added with statuses - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
+
+        # Always log execution status
+        log = ExecutionLog(
+            status_wiseconn=status_wiseconn,
+            status_ubibot=status_ubibot,
+            date=datetime.utcnow()
+        )
+        db.session.add(log)
+        db.session.commit()
+        logging.info(f"Record added with statuses - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
     
     end_time = time.time()  
     total_time = end_time - start_time  

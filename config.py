@@ -1,6 +1,7 @@
 # Get the necessary sensitive variables
 
 import os
+from app.environment import ENV, DATABASE_URL
 
 class Config:
     SECRET_KEY = os.getenv('SECRET_KEY')
