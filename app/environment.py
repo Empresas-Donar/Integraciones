@@ -2,11 +2,14 @@
 Environment configuration and safety checks.
 """
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 
-# Load .env.local first (for local dev overrides), then .env
-load_dotenv('.env.local')
-load_dotenv()
+# Only load dotenv if .env file exists (not needed in Cloud Run)
+env_file = Path('.env')
+if env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv('.env.local')
+    load_dotenv()
 
 ENV = os.getenv('ENV', 'development')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
