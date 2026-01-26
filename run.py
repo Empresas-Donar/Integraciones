@@ -1,6 +1,5 @@
 import logging
 import time
-import psutil
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -38,11 +37,7 @@ def process_data(fetch_process_func, manage_data_func, source_name):
             db.session.remove()
 
 def main():
-
-    start_time = time.time() 
-    process = psutil.Process()  
-    start_memory_usage = process.memory_info().rss / (1024 ** 2)  
-
+    start_time = time.time()
 
     with ThreadPoolExecutor(max_workers=80) as executor:
         futures = {
@@ -85,15 +80,8 @@ def main():
         db.session.commit()
         logging.info(f"Record added with statuses - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
     
-    end_time = time.time()  
-    total_time = end_time - start_time  
-    cpu_usage = psutil.cpu_percent(interval=1)  
-    end_memory_usage = process.memory_info().rss / (1024 ** 2)  
-    memory_usage = end_memory_usage - start_memory_usage
-
+    total_time = time.time() - start_time
     logging.info(f"Total execution time: {total_time:.2f} seconds")
-    logging.info(f"Average CPU usage: {cpu_usage:.2f}%")
-    logging.info(f"Memory used: {memory_usage:.2f} MB")
 
     return {"status_wiseconn": status_wiseconn, "status_ubibot": status_ubibot}
 
