@@ -20,5 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar el resto del código
 COPY . .
 
+# Eliminar archivos .env si existen (por seguridad, secrets vienen de Secret Manager)
+RUN rm -f .env .env.local .env.example
+
 # Ejecutar el script principal
 CMD ["python", "run.py"]
