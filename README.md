@@ -8,10 +8,11 @@ Agricultural irrigation management system that integrates sensor data from Wisec
 3. [Development vs Production](#development-vs-production)
 4. [Git-Crypt Setup](#git-crypt-setup)
 5. [Google Cloud Deployment](#google-cloud-deployment)
-6. [Usage](#usage)
-7. [API Documentation](#api-documentation)
-8. [Database Schema](#database-schema)
-9. [Contributors](#contributors)
+6. [Data Flow & Architecture](#data-flow--architecture)
+7. [Usage](#usage)
+8. [API Documentation](#api-documentation)
+9. [Database Schema](#database-schema)
+10. [Contributors](#contributors)
 
 ---
 
@@ -63,7 +64,7 @@ python run.py
 | `DATABASE_URL` | PostgreSQL connection string |
 | `SECRET_KEY` | Flask secret key |
 | `UBIBOT_ACCOUNT_KEY` | Ubibot API key |
-| `SENDGRID_API_KEY` | SendGrid API key for email alerts |
+| `RESEND_API_KEY` | Resend API key for email alerts |
 
 ### Files
 
@@ -163,7 +164,7 @@ These secrets are stored in Google Cloud Secret Manager and injected at runtime:
 | `API_KEY` | Wiseconn API key |
 | `SECRET_KEY` | Flask secret key |
 | `UBIBOT_ACCOUNT_KEY` | Ubibot API key |
-| `SENDGRID_API_KEY` | SendGrid API key |
+| `RESEND_API_KEY` | Resend API key |
 
 ### Scheduled Execution
 
@@ -205,6 +206,184 @@ See [SETUP_GCLOUD.md](SETUP_GCLOUD.md) for detailed instructions on:
 | Secret Manager | ~$0.06/secret |
 | Cloud Scheduler | Free (first 3 jobs) |
 | **Total** | **~$1-5/month** |
+
+---
+
+## Data Flow & Architecture
+
+### Overview
+
+The system integrates two data sources for agricultural monitoring:
+
+```
+┌─────────────┐     ┌─────────────────────┐     ┌──────────────┐
+│   UBIBOT    │     │    Integraciones    │     │   WISECONN   │
+│  (Sensors)  │     │                     │     │  (Irrigation)│
+└──────┬──────┘     │  ┌───────────────┐  │     └──────┬───────┘
+       │            │  │   PostgreSQL  │  │            │
+       ▼            │  │               │  │            ▼
+  Temperature       │  │ ubi_channels  │  │       Zones
+  Humidity     ────►│  │ ubi_summary   │◄───    Irrigation
+  Light             │  │ ubi_fields    │  │     Sensors
+                    │  │               │  │
+                    │  │ wc_zones      │  │
+                    │  │ wc_irrigation │  │
+                    │  │ wc_measures   │  │
+                    │  └───────────────┘  │
+                    └─────────────────────┘
+```
+
+---
+
+### Ubibot Integration
+
+**What is it?** IoT sensors that measure environmental conditions (temperature, humidity, light, etc.)
+
+#### Data Structure
+
+```
+Channels (ubi_channels)
+├── channel_id: 88738 (unique device identifier)
+├── name: "Sensor Bodega Norte"
+├── latitude/longitude: location
+└── field1-field15: installed sensor names
+    ├── field1: "Temperature"
+    ├── field2: "Humidity"
+    ├── field3: "Light"
+    └── field4-15: (empty if device has fewer sensors)
+
+Hourly Summaries (ubi_channel_summary)
+├── channel_id: 88738
+├── created_at: "2026-02-04 09:00:00"
+├── field1_avg: 22.5 (temperature average)
+├── field1_min: 21.0
+├── field1_max: 24.0
+├── field1_count: 12 (readings per hour)
+├── field2_avg: 65.3 (humidity average)
+└── ... (metrics for each active field)
+
+Final Fields (ubi_channels_fields)
+├── channel_id: 88738
+├── name: "Temperature"
+├── avg: 22.5
+├── min: 21.0
+├── max: 24.0
+└── count: 12
+```
+
+#### Processing Flow
+
+```
+1. API Ubibot → clean_channel_data() → Channel list
+2. API Ubibot → clean_channel_data_summary() → Hourly summaries
+3. create_final_dataframe() → Combines channels + summaries → Final fields table
+```
+
+#### Important Notes
+
+- **Not all devices have 15 sensors**: Most devices only have 3-4 sensors (temperature, humidity, etc.). The system searches for all 15 possible fields but only processes those that exist.
+- **Hourly aggregation**: Data is aggregated hourly with avg, min, max, and count metrics.
+- **11-day window**: The system only checks for existing records within the last 11 days to optimize queries.
+
+---
+
+### Wiseconn Integration
+
+**What is it?** Smart irrigation system - controls and monitors irrigation in agricultural fields.
+
+#### Data Structure
+
+```
+Zones (wc_farms_zones)
+├── id: irrigation zone
+├── farm_id: farm
+├── name: "Sector Norte - Paltos"
+├── area_m2: 5000
+├── theoreticalflow: theoretical flow rate
+└── coordinates: polygon bounds
+
+Scheduled Irrigation (wc_farms_irrigation)
+├── zone_id: affected zone
+├── farm_id: farm
+├── inittime/endtime: scheduled time
+├── volume_m3: volume to irrigate
+├── precipitation_mm: precipitation
+└── delta_time: duration
+
+Real Irrigation (wc_farms_real_irrigation)
+├── zone_id: zone
+├── init_time/end_time: actual irrigation time
+├── volume_m3: actual volume applied
+├── flow_m3_h: actual flow rate
+├── pressure: system pressure
+└── scheduled_irrigation_id: reference to scheduled
+
+Sensors/Measures (wc_zones_sensors)
+├── sensor_id
+├── name: "Soil Moisture", "Flow", "Pressure"
+├── unit: "%", "m³/h", "bar"
+└── zone_id: which zone it belongs to
+```
+
+#### Processing Flow
+
+```
+1. API Wiseconn /zones → process_data_wc_farms_zones() → Zones
+2. API Wiseconn /irrigation → process_data_irrigation() → Scheduled irrigation
+3. API Wiseconn /realIrrigation → process_data_real_irrigation() → Actual irrigation
+4. API Wiseconn /measures → process_data_measures() → Sensors
+```
+
+---
+
+### Logging (Google Cloud)
+
+The system uses structured JSON logging for Google Cloud Logging.
+
+#### Log Format
+
+```json
+{
+  "service": "ubibot_sync",
+  "event_type": "FIELDS_SYNC_SUCCESS",
+  "message": "Campos sincronizados correctamente",
+  "timestamp": "2026-02-04T09:04:04.123456",
+  "data": {
+    "registros_procesados": 1500,
+    "canales_actualizados": 5,
+    "tipos_campo": ["Temperature", "Humidity", "Light"]
+  }
+}
+```
+
+#### Event Types
+
+| Service | Event Type | Description |
+|---------|------------|-------------|
+| `ubibot_sync` | `SYNC_START` | Synchronization started |
+| `ubibot_sync` | `CHANNELS_SYNC_SUCCESS` | Channels synced successfully |
+| `ubibot_sync` | `SUMMARY_SYNC_SUCCESS` | Summaries synced successfully |
+| `ubibot_sync` | `FIELDS_SYNC_SUCCESS` | Fields synced successfully |
+| `ubibot_sync` | `*_ERROR` | Error during sync |
+| `data_processing` | `UBIBOT_CHANNELS_PROCESSED` | Channels processed |
+| `data_processing` | `WISECONN_ZONES_PROCESSED` | Zones processed |
+| `utils` | `FINAL_DATAFRAME_CREATED` | Final dataframe created |
+
+#### Filtering in Google Cloud Console
+
+```
+# Filter by service
+jsonPayload.service="ubibot_sync"
+
+# Filter by event type
+jsonPayload.event_type="FIELDS_SYNC_SUCCESS"
+
+# Filter errors only
+jsonPayload.event_type=~"ERROR"
+
+# Filter by channel
+jsonPayload.data.channel_id=88738
+```
 
 ---
 
