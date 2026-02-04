@@ -152,7 +152,13 @@ def manage_data_ubi(processed_data, data_type):
             WHERE created_at >= CURRENT_DATE - INTERVAL '11 days';
             """
             existing_records = db.session.execute(text(select_query)).fetchall()
-            existing_records_set = set((row['created_at'], row['channel_id']) for row in existing_records)
+            # row[1] = created_at, row[2] = channel_id
+            # Usar string ISO para comparación consistente
+            existing_records_set = set()
+            for row in existing_records:
+                created_at = row[1]
+                created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(created_at, 'strftime') else str(created_at)
+                existing_records_set.add((created_at_str, str(row[2])))
 
             log_ubibot_event(
                 "SUMMARY_EXISTING_CHECK",
@@ -168,10 +174,21 @@ def manage_data_ubi(processed_data, data_type):
             )
             return
 
-        filtered_data = [
-            item for item in cleaned_data_dict
-            if (item['created_at'], item['channel_id']) not in existing_records_set
-        ]
+        # Filtrar datos que no existen aún
+        filtered_data = []
+        for item in cleaned_data_dict:
+            created_at = item['created_at']
+            # Normalizar a string ISO para comparación
+            if hasattr(created_at, 'strftime'):
+                created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S')
+            elif hasattr(created_at, 'isoformat'):
+                created_at_str = created_at.isoformat()
+            else:
+                created_at_str = str(created_at)
+
+            key = (created_at_str, str(item['channel_id']))
+            if key not in existing_records_set:
+                filtered_data.append(item)
 
         if not filtered_data:
             log_ubibot_event(
@@ -200,15 +217,15 @@ def manage_data_ubi(processed_data, data_type):
             }
         )
 
+        # INSERT simple - el filtrado previo ya elimina duplicados
         insert_statement = """
         INSERT INTO ubi_channel_summary (id, created_at, channel_id, date, hour)
-        VALUES (:id, :created_at, :channel_id, :date, :hour)
-        ON CONFLICT (created_at, channel_id)
-        DO NOTHING;
+        VALUES (:id, :created_at, :channel_id, :date, :hour);
         """
 
         try:
-            db.session.execute(text(insert_statement), filtered_data)
+            for item in filtered_data:
+                db.session.execute(text(insert_statement), item)
             db.session.commit()
 
             log_ubibot_event(
@@ -260,13 +277,23 @@ def manage_fields_ubi(df, batch_size=2000):
     )
 
     try:
+        # Consultar registros existentes con su count para decidir si actualizar
         select_query = """
-        SELECT created_at, channel_id, name, avg, count, min, max, date, hour, summary_id
+        SELECT created_at, channel_id, name, count
         FROM ubi_channels_fields
         WHERE created_at >= CURRENT_DATE - INTERVAL '11 days';
         """
         result = db.session.execute(text(select_query))
         existing_records = result.fetchall()
+
+        # Crear diccionario para búsqueda rápida: (created_at_str, channel_id, name) -> count
+        existing_dict = {}
+        for row in existing_records:
+            created_at = row[0]
+            # Convertir a string ISO para comparación consistente
+            created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(created_at, 'strftime') else str(created_at)
+            key = (created_at_str, str(row[1]), row[2])  # created_at_str, channel_id, name
+            existing_dict[key] = row[3]  # count
 
         log_ubibot_event(
             "FIELDS_EXISTING_CHECK",
@@ -313,6 +340,29 @@ def manage_fields_ubi(df, batch_size=2000):
         )
         return
 
+    # Separar registros nuevos de los que necesitan actualización
+    records_to_insert = []
+    records_to_update = []
+
+    for item in data_dicts:
+        created_at = item['created_at']
+        # Convertir a string ISO para comparación consistente (timestamps ya vienen sin timezone)
+        if hasattr(created_at, 'strftime'):
+            created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S')
+        elif hasattr(created_at, 'isoformat'):
+            created_at_str = created_at.isoformat()
+        else:
+            created_at_str = str(created_at)
+
+        key = (created_at_str, str(item['channel_id']), item['name'])
+        if key in existing_dict:
+            # Ya existe - solo actualizar si count < 12
+            if existing_dict[key] is not None and existing_dict[key] < 12:
+                records_to_update.append(item)
+        else:
+            # No existe - insertar
+            records_to_insert.append(item)
+
     # Estadísticas de los datos
     channels_unicos = df['channel_id'].nunique() if 'channel_id' in df.columns else 0
     campos_unicos = df['name'].unique().tolist() if 'name' in df.columns else []
@@ -320,58 +370,62 @@ def manage_fields_ubi(df, batch_size=2000):
 
     log_ubibot_event(
         "FIELDS_INSERT_PREVIEW",
-        "Preparando inserción de campos",
+        "Preparando inserción/actualización de campos",
         {
             "total_registros": total_records,
+            "registros_nuevos": len(records_to_insert),
+            "registros_a_actualizar": len(records_to_update),
+            "registros_omitidos": total_records - len(records_to_insert) - len(records_to_update),
             "canales_unicos": channels_unicos,
             "tipos_campo": campos_unicos[:10] if len(campos_unicos) > 10 else campos_unicos,
-            "fechas": [str(f) for f in sorted(fechas_unicas)[:5]] if fechas_unicas else [],
-            "muestra_datos": data_dicts[:3] if len(data_dicts) > 3 else data_dicts
+            "fechas": [str(f) for f in sorted(fechas_unicas)[:5]] if fechas_unicas else []
         }
     )
 
     insert_statement = """
     INSERT INTO ubi_channels_fields (created_at, channel_id, name, avg, count, min, max, date, hour, summary_id)
-    VALUES (:created_at, :channel_id, :name, :avg, :count, :min, :max, :date, :hour, :summary_id)
-    ON CONFLICT (created_at, channel_id, name)
-    DO UPDATE SET
-        avg = EXCLUDED.avg,
-        count = EXCLUDED.count,
-        min = EXCLUDED.min,
-        max = EXCLUDED.max
-    WHERE ubi_channels_fields.count < 12;
+    VALUES (:created_at, :channel_id, :name, :avg, :count, :min, :max, :date, :hour, :summary_id);
+    """
+
+    update_statement = """
+    UPDATE ubi_channels_fields
+    SET avg = :avg, count = :count, min = :min, max = :max
+    WHERE created_at = :created_at AND channel_id = :channel_id AND name = :name;
     """
 
     try:
-        total_batches = (total_records + batch_size - 1) // batch_size
+        inserted_count = 0
+        updated_count = 0
 
-        log_ubibot_event(
-            "FIELDS_BATCH_START",
-            "Iniciando procesamiento por lotes",
-            {"total_lotes": total_batches, "registros_por_lote": batch_size}
-        )
+        # Insertar nuevos registros en lotes
+        if records_to_insert:
+            total_insert_batches = (len(records_to_insert) + batch_size - 1) // batch_size
+            log_ubibot_event(
+                "FIELDS_INSERT_START",
+                "Iniciando inserción de registros nuevos",
+                {"total_registros": len(records_to_insert), "lotes": total_insert_batches}
+            )
 
-        for i in range(0, total_records, batch_size):
-            batch = data_dicts[i:i + batch_size]
-            db.session.execute(text(insert_statement), batch)
-            batch_num = i // batch_size + 1
+            for i in range(0, len(records_to_insert), batch_size):
+                batch = records_to_insert[i:i + batch_size]
+                for item in batch:
+                    db.session.execute(text(insert_statement), item)
+                    inserted_count += 1
 
-            # Log cada 5 lotes o en el último
-            if batch_num % 5 == 0 or batch_num == total_batches:
-                progreso = min(i + batch_size, total_records)
-                porcentaje = round((progreso / total_records) * 100, 1)
+        # Actualizar registros existentes en lotes
+        if records_to_update:
+            total_update_batches = (len(records_to_update) + batch_size - 1) // batch_size
+            log_ubibot_event(
+                "FIELDS_UPDATE_START",
+                "Iniciando actualización de registros existentes",
+                {"total_registros": len(records_to_update), "lotes": total_update_batches}
+            )
 
-                log_ubibot_event(
-                    "FIELDS_BATCH_PROGRESS",
-                    f"Progreso de inserción",
-                    {
-                        "lote_actual": batch_num,
-                        "total_lotes": total_batches,
-                        "registros_procesados": progreso,
-                        "total_registros": total_records,
-                        "porcentaje": porcentaje
-                    }
-                )
+            for i in range(0, len(records_to_update), batch_size):
+                batch = records_to_update[i:i + batch_size]
+                for item in batch:
+                    db.session.execute(text(update_statement), item)
+                    updated_count += 1
 
         db.session.commit()
 
@@ -379,8 +433,8 @@ def manage_fields_ubi(df, batch_size=2000):
             "FIELDS_SYNC_SUCCESS",
             "Campos sincronizados correctamente",
             {
-                "registros_procesados": total_records,
-                "lotes_completados": total_batches,
+                "registros_insertados": inserted_count,
+                "registros_actualizados": updated_count,
                 "canales_actualizados": channels_unicos,
                 "tipos_campo": campos_unicos
             }

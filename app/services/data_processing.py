@@ -407,6 +407,9 @@ def clean_channel_data_summary(data_ubi_summary, channel_id):
 
     data_ubi_summary['created_at'] = pd.to_datetime(data_ubi_summary['created_at'], utc=True)
     data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_convert('America/Santiago')
+    # Quitar timezone para que PostgreSQL guarde el valor tal cual (hora de Chile)
+    # sin hacer conversiones adicionales a la zona horaria del servidor
+    data_ubi_summary['created_at'] = data_ubi_summary['created_at'].dt.tz_localize(None)
 
     tiene_timezone = pd.api.types.is_datetime64tz_dtype(data_ubi_summary['created_at'])
     log_processing_event(
