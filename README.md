@@ -12,7 +12,8 @@ Agricultural irrigation management system that integrates sensor data from Wisec
 7. [Usage](#usage)
 8. [API Documentation](#api-documentation)
 9. [Database Schema](#database-schema)
-10. [Contributors](#contributors)
+10. [AppSheet Integration](#appsheet-integration)
+11. [Contributors](#contributors)
 
 ---
 
@@ -647,8 +648,24 @@ Integraciones/
 ├── .env.example             # Template for new devs
 ├── .gitattributes           # Git-crypt config
 ├── .gitignore               # Git ignore rules
-└── SETUP_GCLOUD.md          # Google Cloud setup instructions
+├── SETUP_GCLOUD.md          # Google Cloud setup instructions
+└── APPSHEET_INTEGRATION.md  # AppSheet integration plan
 ```
+
+---
+
+## AppSheet Integration
+
+Planeación para integrar datos de aplicaciones AppSheet hacia PostgreSQL para habilitar reportes SQL.
+
+**Ver documentación completa**: [APPSHEET_INTEGRATION.md](APPSHEET_INTEGRATION.md)
+
+### Resumen
+
+- **Objetivo**: Extraer datos de 40+ apps AppSheet y consolidarlos en PostgreSQL
+- **Métodos**: AppSheet REST API (preferido) o Google Sheets API (fallback)
+- **Arquitectura**: Cloud Run Job + Cloud Scheduler + Cloud SQL PostgreSQL
+- **Estado**: Planificación
 
 ---
 
