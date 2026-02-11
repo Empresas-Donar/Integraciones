@@ -44,19 +44,6 @@ def main():
             "Canales con prefijos T e I:\n" + "\n".join(t_i_channels)
         )
 
-        # Reporte de sensores caídos
-        sensors_report = alert_manager.sensors_down()
-        sensors_lines = sensors_report.split("\n")
-        if len(sensors_lines) > 1:  # Más que solo el header
-            logging.info(f"Sensores caídos encontrados: {len(sensors_lines) - 1}")
-            mail_manager.send_mail(
-                "Reporte de Sensores Caídos",
-                sensors_report
-            )
-            logging.info("Correo enviado: Reporte de Sensores Caídos")
-        else:
-            logging.info("No hay sensores caídos")
-
         logging.info("Reporte diario completado")
     except Exception as e:
         logging.error(f"Error en reporte diario: {e}")
