@@ -1,5 +1,4 @@
-# Environment variables (DO NOT COMMIT)
-.env
+# Local development overrides (DO NOT COMMIT)
 .env.local
 
 # Python
