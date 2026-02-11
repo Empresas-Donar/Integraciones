@@ -3,15 +3,13 @@ name: Deploy to Cloud Run Jobs
 on:
   push:
     branches:
-      - feat/google-cloud-integration  # Rama de pruebas
-      # - main  # Descomentar cuando esté listo para producción
+      - main
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: southamerica-west1  # Santiago, Chile - cerca de la DB
-  # Nombre del job diferente para staging vs producción
-  JOB_NAME: integraciones-job-staging
-  ALERTS_JOB_NAME: integraciones-alerts-staging
+  JOB_NAME: integraciones-job
+  ALERTS_JOB_NAME: integraciones-alerts
 
 jobs:
   deploy:
