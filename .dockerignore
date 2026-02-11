@@ -1,0 +1,31 @@
+# Ignore env files - secrets come from Secret Manager in Cloud Run
+.env
+.env.local
+.env.example
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Docs
+*.md
+SETUP_GCLOUD.md
+
+# Migrations (if not needed at runtime)
+# migrations/
+
+# Tests
+tests/
+*_test.py
+test_*.py

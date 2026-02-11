@@ -1,19 +1,20 @@
 import os
-import sendgrid
-from sendgrid.helpers.mail import Mail, Email, To, Content
-from sqlalchemy import create_engine, and_
+import resend
 
 class MailManager:
     def __init__(self):
-        self.sendgrid_api_key = os.getenv('SENDGRID_API_KEY')
-        self.sg = sendgrid.SendGridAPIClient(api_key=self.sendgrid_api_key)
-        self.from_email = Email("bot@empresasdonar.cl")
-        self.to_email = To("gestion.donar@gmail.com")
+        resend.api_key = os.getenv('RESEND_API_KEY')
+        self.from_email = "Integraciones Bot <onboarding@resend.dev>"
+        self.to_email = "gestion@empresasdonar.cl"
 
     def send_mail(self, subject, content):
-        mail = Mail(self.from_email, self.to_email, subject, Content("text/plain", content))
         try:
-            response = self.sg.send(mail)
-            print(f"Email enviado! Código de estado: {response.status_code}")
+            response = resend.Emails.send({
+                "from": self.from_email,
+                "to": self.to_email,
+                "subject": subject,
+                "text": content
+            })
+            print(f"Email enviado! ID: {response['id']}")
         except Exception as e:
             print(f"Error al enviar el email: {str(e)}")

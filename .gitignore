@@ -1,0 +1,26 @@
+# Local development overrides (DO NOT COMMIT)
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Database
+*.db
+instance/
+git-crypt-integraciones
+
+# Google Cloud
+.gcloudignore
+
+# Logs
+*.log
+updates.log
