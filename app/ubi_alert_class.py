@@ -19,18 +19,12 @@ class UbibotAlertManager:
         return [(data.channel_id, data.name) for data in filtered_data]
 
     def sensors_down(self):
-        date, current_time, start_time = self.get_chile_time()
+        yesterday = datetime.now(self.chile_tz).date() - timedelta(days=1)
         resultados = self.session.query(UbibotFields).filter(
-            UbibotFields.date == date,
-            UbibotFields.hour.between(start_time, current_time),
-            and_(
-                UbibotFields.avg == 0,
-                UbibotFields.count == 0,
-                UbibotFields.min == 0,
-                UbibotFields.max == 0
-            )
+            UbibotFields.date == yesterday,
+            UbibotFields.count == 0
         ).all()
-        lines = ["Sensores apagados en las últimas horas:"]
+        lines = ["Sensores sin lecturas el día anterior:"]
         for resultado in resultados:
             lines.append(f"Canal: {resultado.channel_id}, Nombre: {resultado.name}, Hora: {resultado.hour}, Fecha: {resultado.date}")
         return "\n".join(lines)
