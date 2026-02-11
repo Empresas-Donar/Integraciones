@@ -13,6 +13,7 @@ from app.services.database import manage_data
 from app.services.database_ubibot import manage_data_ubi, manage_fields_ubi
 from app.services.utils import create_channel_sensor_mapping, create_final_dataframe
 from app.models import ExecutionLog
+from app.mail_class import MailManager
 
 logging.basicConfig(level=logging.INFO,  
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -79,7 +80,36 @@ def main():
         db.session.add(log)
         db.session.commit()
         logging.info(f"Record added with statuses - Wiseconn: {status_wiseconn}, Ubibot: {status_ubibot}")
-    
+
+        # Send alert email if any service is down
+        services_down = []
+        if not status_wiseconn.startswith("Success"):
+            services_down.append("Wiseconn")
+        if not status_ubibot.startswith("Success"):
+            services_down.append("Ubibot")
+
+        if services_down:
+            try:
+                mail_manager = MailManager()
+                nombres = " y ".join(services_down)
+                subject = f"ALERTA: Servicio {'caído' if len(services_down) == 1 else 'caídos'} - {nombres}"
+                detalles = []
+                if "Wiseconn" in services_down:
+                    detalles.append(f"  - Wiseconn: {status_wiseconn}")
+                if "Ubibot" in services_down:
+                    detalles.append(f"  - Ubibot: {status_ubibot}")
+                content = (
+                    f"Se detectó que el servicio de {nombres} se encuentra caído.\n\n"
+                    f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+                    f"Detalle:\n"
+                    + "\n".join(detalles)
+                    + "\n\nPor favor revisar los servicios afectados."
+                )
+                mail_manager.send_mail(subject, content)
+                logging.info(f"Alerta enviada: {nombres} caído(s)")
+            except Exception as e:
+                logging.error(f"Error al enviar alerta por email: {e}")
+
     total_time = time.time() - start_time
     logging.info(f"Total execution time: {total_time:.2f} seconds")
 
