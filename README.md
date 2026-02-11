@@ -649,6 +649,7 @@ Integraciones/
 ├── .gitattributes           # Git-crypt config
 ├── .gitignore               # Git ignore rules
 ├── SETUP_GCLOUD.md          # Google Cloud setup instructions
+├── daily_channel_report.py   # Daily Ubibot channel alert report
 └── APPSHEET_INTEGRATION.md  # AppSheet integration plan
 ```
 
@@ -656,15 +657,15 @@ Integraciones/
 
 ## AppSheet Integration
 
-Planeación para integrar datos de aplicaciones AppSheet hacia PostgreSQL para habilitar reportes SQL.
+Migración de 40 apps AppSheet desde Google Sheets a PostgreSQL (Cloud SQL) como datasource directo.
 
 **Ver documentación completa**: [APPSHEET_INTEGRATION.md](APPSHEET_INTEGRATION.md)
 
 ### Resumen
 
-- **Objetivo**: Extraer datos de 40+ apps AppSheet y consolidarlos en PostgreSQL
-- **Métodos**: AppSheet REST API (preferido) o Google Sheets API (fallback)
-- **Arquitectura**: Cloud Run Job + Cloud Scheduler + Cloud SQL PostgreSQL
+- **Objetivo**: Conectar apps AppSheet directamente a Cloud SQL PostgreSQL (lectura y escritura)
+- **Arquitectura**: AppSheet → Cloud SQL PostgreSQL (conexión directa, sin intermediarios)
+- **Apps**: 40 aplicaciones en 4 categorías (operaciones, maquinaria, control técnico, administración)
 - **Estado**: Planificación
 
 ---

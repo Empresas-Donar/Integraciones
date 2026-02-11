@@ -1,782 +1,290 @@
-# Integración AppSheet → Base de Datos SQL
+# Integración AppSheet con PostgreSQL (Cloud SQL)
 
-Configurar disparadores en AppSheet que inserten datos automáticamente en PostgreSQL cuando hay cambios, habilitando reportes SQL sin limitaciones de Google Sheets.
+Conectar las aplicaciones AppSheet directamente a Cloud SQL PostgreSQL como datasource nativo, habilitando lectura y escritura sin intermediarios.
 
 ## Objetivo
 
-Configurar **disparadores (triggers) en AppSheet** que inserten datos automáticamente en PostgreSQL cuando se crean o modifican registros, permitiendo:
-- Inserción automática en tiempo real
-- Reportes SQL complejos
-- Análisis histórico y comparativo
-- Integración con otras fuentes (Wiseconn, Ubibot)
-
-### Visión General del Sistema
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    APPSHEET (29 Apps)                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  Usuario crea/modifica registro                                  │
-│           │                                                       │
-│           ▼                                                       │
-│  ┌──────────────────────┐                                        │
-│  │ Disparador (Trigger)  │  AppSheet Automation                   │
-│  │ - On Row Add          │  o Webhook                              │
-│  │ - On Row Update      │                                        │
-│  └──────────┬───────────┘                                        │
-│             │                                                     │
-│             │ HTTP POST (Webhook)                                 │
-│             │                                                     │
-└─────────────┼─────────────────────────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    API REST (Cloud Run)                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────────────┐                                        │
-│  │ Endpoint:             │  /api/appsheet/webhook                 │
-│  │ - Valida datos        │                                        │
-│  │ - Normaliza           │                                        │
-│  │ - Inserta en BD       │                                        │
-│  └──────────┬───────────┘                                        │
-│             │                                                     │
-└─────────────┼─────────────────────────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              POSTGRESQL (CLOUD SQL)                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  Schema: appsheet                                                 │
-│  ├── Tabla 1: contratistas_talagante                             │
-│  ├── Tabla 2: epp_talagante                                     │
-│  └── Tabla N: ...                                                │
-│                                                                   │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         CONSUMO                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────┐  ┌──────────┐  ┌──────────┐                 │
-│  │ Reportes SQL │  │ BI Tools  │  │ REST API │                 │
-│  └──────────────┘  └──────────┘  └──────────┘                 │
-│                                                                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Inventario de Apps
-
-### Contratistas
-1. Contratistas Talagante
-2. Contratistas Kontrolag
-3. Contratistas Zúñiga
-4. Contratistas Isla de Maipo
-
-### EPP (Equipos de Protección Personal)
-5. EPP Talagante
-6. EPP_LasVertientes
-7. EPP_Zuniga
-
-### Combustible
-8. C. Combustible Zuñiga
-9. Carga Combustible Talagante
-10. C. Combustible Las vertientes
-
-### Cosecha
-11. Cosecha
-12. Cosecha-Isla de Maipo
-13. Cosecha -anterior
-14. Trabajadores Cosecha FB
-
-### Registros y Trámites
-15. Registro de Trámites
-16. Registro Maquinaria-Zuñiga
-
-### Conteos y Mediciones
-17. Conteo de Bunching
-18. CONTEO DE DARDOS-CEREZOS
-19. Medición Pozos
-
-### Plagas y Calicatas
-20. Talagante Plagas
-21. Calicatas Zúñiga
-22. Calicatas Talagante
-23. Calicatas Isla de Maipo
-
-### Estado Fenológico
-24. Estado Fenológico-Zúñiga
-25. Estado Fenológico-I. de Maipo
-
-### Otros
-26. DESPACHOS
-27. SAG FB
-28. Servicios FB
-29. Riego
-
-**Total: 29 aplicaciones identificadas**
-
----
-
-## Opción de Integración
-
-### AppSheet Automation + Webhook → API REST → PostgreSQL
-
-**Flujo:**
-1. **AppSheet Automation**: Configurar disparador (trigger) en cada app que se active cuando:
-   - Se crea un nuevo registro (`On Row Add`)
-   - Se modifica un registro (`On Row Update`)
-   
-2. **Webhook HTTP POST**: El disparador envía datos a un endpoint REST:
-   - URL: `https://api-tu-proyecto.run.app/api/appsheet/webhook`
-   - Método: POST
-   - Payload: Datos del registro (JSON)
-   - Headers: Token de autenticación
-
-3. **API REST (Cloud Run)**: Endpoint que recibe el webhook:
-   - Valida autenticación
-   - Normaliza datos
-   - Inserta/actualiza en PostgreSQL
-   - Retorna confirmación
-
-4. **PostgreSQL**: Almacenamiento directo en schema `appsheet`
-
-**Ventajas:**
-- ✅ Inserción en tiempo real (no polling)
-- ✅ Datos siempre actualizados
-- ✅ No requiere extracción programada
-- ✅ Escalable (cada app dispara independientemente)
-- ✅ Manejo de errores por registro
-
-**Configuración requerida:**
-- API REST endpoint en Cloud Run
-- Token de autenticación compartido
-- Configurar Automation en cada app de AppSheet
+Migrar las apps AppSheet desde Google Sheets a **PostgreSQL (Cloud SQL)** como fuente de datos directa, permitiendo:
+- Lectura y escritura nativa desde AppSheet
+- Reportes SQL sin limitaciones de Sheets
+- Análisis cruzado con datos de Wiseconn y Ubibot
+- Mayor rendimiento y escalabilidad
+- Integridad de datos y concurrencia
 
 ---
 
 ## Arquitectura
 
-### Diagrama de Flujo General
-
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                            APPSHEET                                  │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  Usuario crea/modifica registro en App                              │
-│           │                                                           │
-│           ▼                                                           │
-│  ┌──────────────────────────────────────┐                            │
-│  │ AppSheet Automation (Trigger)       │                            │
-│  │ - On Row Add                        │                            │
-│  │ - On Row Update                     │                            │
-│  └──────────┬───────────────────────────┘                            │
-│             │                                                         │
-│             │ HTTP POST (Webhook)                                     │
-│             │ Headers: Authorization Token                            │
-│             │ Body: JSON con datos del registro                      │
-│             │                                                         │
-│  ┌──────────┴───────────────────────────┐                            │
-│  │ App 1: Contratistas                  │                            │
-│  │ App 2: EPP                            │                            │
-│  │ App 3: Cosecha                        │                            │
-│  │ App N: ...                            │                            │
-│  └──────────┬───────────────────────────┘                            │
-│             │                                                         │
-└─────────────┼─────────────────────────────────────────────────────────┘
-              │
-              │ POST https://api.run.app/api/appsheet/webhook
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    API REST (Cloud Run)                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────────────────────────────┐                            │
-│  │ Endpoint: /api/appsheet/webhook      │                            │
-│  │                                      │                            │
-│  │ 1. Valida token de autenticación    │                            │
-│  │ 2. Identifica app y tabla            │                            │
-│  │ 3. Normaliza datos                   │                            │
-│  │ 4. Valida referencias (catálogos)    │                            │
-│  │ 5. Inserta/actualiza en PostgreSQL  │                            │
-│  │ 6. Retorna confirmación              │                            │
-│  └──────────┬───────────────────────────┘                            │
-│             │                                                         │
-└─────────────┼─────────────────────────────────────────────────────────┘
-              │
-              │ SQL INSERT/UPDATE
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                  POSTGRESQL (CLOUD SQL)                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  Schema: appsheet                                                    │
-│  ├── Tabla 1: contratistas_talagante                                │
-│  ├── Tabla 2: epp_talagante                                         │
-│  ├── Tabla 3: cosecha                                                │
-│  └── Tabla N: ...                                                    │
-│                                                                       │
-└─────────────────────────┬─────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         REPORTES                                    │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────┐          ┌──────────────┐                         │
-│  │ BI Tools     │          │ SQL Queries  │                         │
-│  └──────────────┘          └──────────────┘                         │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    APPSHEET (40 Apps)                            │
+│                                                                  │
+│  Lectura y escritura directa sobre PostgreSQL                   │
+│                                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │ Tarjas   │  │Despachos │  │ Cosecha  │  │  EPP     │       │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘       │
+│       │              │              │              │             │
+└───────┼──────────────┼──────────────┼──────────────┼─────────────┘
+        │              │              │              │
+        └──────────────┴──────┬───────┴──────────────┘
+                              │
+                              │ Cloud SQL Connector
+                              │ (lectura + escritura)
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  POSTGRESQL (Cloud SQL)                          │
+│                                                                  │
+│  Schema: appsheet                                                │
+│  ├── tarjas_zuniga                                               │
+│  ├── tarjas_talagante                                            │
+│  ├── despachos                                                   │
+│  ├── cosecha                                                     │
+│  └── ... (40 apps)                                               │
+│                                                                  │
+│  Schema: public (existente)                                      │
+│  ├── wc_farms_zones         (Wiseconn)                           │
+│  ├── ubi_channel_data       (Ubibot)                             │
+│  └── execution_log                                               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         CONSUMO                                  │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────┐  ┌───────────────────┐         │
+│  │ Reportes SQL │  │ BI Tools │  │ Consultas cruzadas│         │
+│  └──────────────┘  └──────────┘  └───────────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 **Componentes:**
-- **Disparador**: AppSheet Automation (configurado en cada app)
-- **API REST**: Cloud Run Service (endpoint webhook)
-- **Base de Datos**: Cloud SQL PostgreSQL (schema `appsheet`)
-- **Secrets**: Secret Manager (token de autenticación)
+- **AppSheet**: Apps conectadas directamente a Cloud SQL como datasource
+- **Cloud SQL PostgreSQL**: Base de datos centralizada (schema `appsheet`)
+- **Cloud SQL Connector**: Conexión nativa de AppSheet a Cloud SQL via Google Cloud
 
 ---
 
-## Diseño de Base de Datos
+## Inventario de Apps (40 aplicaciones)
 
-### Schema: `appsheet`
+### 1. Operaciones de Terreno y Producción
 
-Cada app tendrá su tabla en el schema `appsheet`:
+| # | App | Descripción |
+|---|-----|-------------|
+| 1 | Tarjas Zúñiga | Registro de producción individual de trabajadores para pagos por trato y jornada |
+| 2 | Tarjas Talagante | Registro de producción individual de trabajadores para pagos por trato y jornada |
+| 3 | Tarjas Isla de Maipo | Registro de producción individual de trabajadores para pagos por trato y jornada |
+| 4 | Tarjas Kontrolag | Registro de producción individual de trabajadores para pagos por trato y jornada |
+| 5 | Despachos | Registro de pesajes de despachos para emisión de guías |
+| 6 | Conteo de Bunching | Contabilización de muestreos de plantas para análisis estadístico |
+| 7 | Cosecha | Registro de capachos en cerezas y ciruelas, logística de bins y cálculo de pagos semanales |
+| 8 | Cosecha Isla de Maipo | Registro de capachos, logística de bins y cálculo de pagos semanales |
+| 9 | Conteo de Dardos Cerezas | Registro de dardos florales para estimar potencial productivo de la temporada |
+| 10 | Conteo de Dardos Ciruelas | Registro de dardos florales para estimar potencial productivo de la temporada |
+| 11 | Trabajadores FB | Registro de trabajos, gastos y consumos del personal de maquinaria de cosecha para liquidaciones |
+| 12 | Cosecha Pimentón Ensayo | Registro de cosecha de pimentón experimental |
+| 13 | Control de Calidad en Packing | Evaluación de calibre, color y defectos en la línea de proceso |
+
+### 2. Maquinaria y Recursos Operativos
+
+| # | App | Descripción |
+|---|-----|-------------|
+| 14 | Consumos de Combustibles Zúñiga | Control de carga de combustible a equipos y vehículos para asignación de costos |
+| 15 | Consumos de Combustibles Isla de Maipo | Control de carga de combustible a equipos y vehículos para asignación de costos |
+| 16 | Consumos de Combustibles Talagante | Control de carga de combustible a equipos y vehículos para asignación de costos |
+| 17 | Registro de Maquinarias Zúñiga | Bitácora de uso (horómetros, labores e implementos) para gestión de mantenciones y costos |
+| 18 | Registro de Maquinarias Talagante | Bitácora de uso (horómetros, labores e implementos) para gestión de mantenciones y costos |
+| 19 | Registro de Maquinarias Isla de Maipo | Bitácora de uso (horómetros, labores e implementos) para gestión de mantenciones y costos |
+| 20 | Inventario FB | Gestión de stock de repuestos y asignación al personal |
+| 21 | Herramientas | Gestión de stock de herramientas prestadas al personal |
+| 22 | Medición Pozos | Registro de mediciones de niveles de pozos |
+
+### 3. Control Técnico y Agronómico
+
+| # | App | Descripción |
+|---|-----|-------------|
+| 23 | Monitoreo de Plagas Isla de Maipo | Registro de presencia de plagas y enfermedades para historiales fitosanitarios |
+| 24 | Monitoreo de Plagas Zúñiga | Registro de presencia de plagas y enfermedades para historiales fitosanitarios |
+| 25 | Monitoreo de Plagas Talagante | Registro de presencia de plagas y enfermedades para historiales fitosanitarios |
+| 26 | Calicatas Zúñiga | Análisis de perfiles de suelo para evaluar la humedad |
+| 27 | Calicatas Isla de Maipo | Análisis de perfiles de suelo para evaluar la humedad |
+| 28 | Calicatas Talagante | Análisis de perfiles de suelo para evaluar la humedad |
+| 29 | Riego | Registro de eventos de riego (sectores, tiempos y caudales) para control hídrico |
+| 30 | Estados Fenológicos Zúñiga | Monitoreo del desarrollo de las plantas para programar labores agronómicas |
+| 31 | Estados Fenológicos Isla de Maipo | Monitoreo del desarrollo de las plantas para programar labores agronómicas |
+| 32 | Asesorías Técnicas Zúñiga | Centralización de recomendaciones y tareas de asesores durante visitas |
+| 33 | Asesorías Técnicas Talagante | Centralización de recomendaciones y tareas de asesores durante visitas |
+| 34 | Asesorías Técnicas Isla de Maipo | Centralización de recomendaciones y tareas de asesores durante visitas |
+
+### 4. Administración y Logística
+
+| # | App | Descripción |
+|---|-----|-------------|
+| 35 | Trámites | Registro de trámites bancarios, compras y traslados realizados por choferes |
+| 36 | Control de EPP Talagante | Control de entrega y devolución de equipos de protección personal |
+| 37 | Control de EPP Servicios FB | Control de entrega y devolución de equipos de protección personal |
+| 38 | EPP Las Vertientes | Control de entrega y devolución de equipos de protección personal |
+| 39 | EPP Zúñiga | Control de entrega y devolución de equipos de protección personal |
+| 40 | SAG FB | Registros relacionados con el Servicio Agrícola y Ganadero |
+
+**Total: 40 aplicaciones**
+
+---
+
+## Configuración de Cloud SQL como Datasource
+
+### Requisitos Previos
+
+1. **Cloud SQL PostgreSQL** activo en Google Cloud (ya existente)
+2. **IP pública** o **Private Service Connect** habilitado en la instancia Cloud SQL
+3. **Usuario de base de datos** dedicado para AppSheet (con permisos de lectura/escritura en schema `appsheet`)
+
+### Paso 1: Preparar la Base de Datos
 
 ```sql
+-- Crear schema dedicado para apps AppSheet
 CREATE SCHEMA IF NOT EXISTS appsheet;
 
-CREATE TABLE appsheet.contratistas_talagante (
-    id SERIAL PRIMARY KEY,
-    appsheet_row_id TEXT UNIQUE,
-    synced_at TIMESTAMP DEFAULT NOW(),
-    source_updated_at TIMESTAMP,
-    data_hash TEXT,
-    -- Campos específicos de la app
-    ...
-);
+-- Crear usuario dedicado para AppSheet (permisos limitados)
+CREATE USER appsheet_user WITH PASSWORD 'password_seguro';
+GRANT USAGE ON SCHEMA appsheet TO appsheet_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA appsheet TO appsheet_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA appsheet GRANT ALL ON TABLES TO appsheet_user;
 ```
 
-**Nomenclatura**: `{app_name_snake_case}` (ej: `contratistas_talagante`, `epp_talagante`)
+### Paso 2: Conectar AppSheet a Cloud SQL
+
+1. En AppSheet, ir a **Data > + New Data Source**
+2. Seleccionar **Cloud SQL** (disponible en planes Business+)
+3. Configurar la conexión:
+   - **Project**: ID del proyecto de Google Cloud
+   - **Instance**: Nombre de la instancia Cloud SQL
+   - **Database**: Nombre de la base de datos
+   - **Schema**: `appsheet`
+   - **User/Password**: Credenciales del usuario dedicado
+
+### Paso 3: Crear Tablas
+
+Para cada app, crear las tablas necesarias en el schema `appsheet`. AppSheet leerá la estructura de las tablas automáticamente.
+
+Cada tabla debe tener como mínimo:
+- `id` (SERIAL PRIMARY KEY) - Clave primaria autogenerada
+- Campos específicos de la app
+
+### Paso 4: Configurar la App en AppSheet
+
+1. Agregar las tablas del schema `appsheet` como datasource
+2. Configurar columnas, tipos de datos y validaciones en AppSheet
+3. Configurar vistas, formularios y workflows
+
+---
+
+## Convenciones
+
+### Nomenclatura de Tablas
+
+```
+appsheet.{app_name_snake_case}
+```
+
+Ejemplos:
+- `appsheet.tarjas_zuniga`
+- `appsheet.despachos`
+- `appsheet.cosecha`
+- `appsheet.epp_talagante`
+- `appsheet.combustibles_zuniga`
+- `appsheet.monitoreo_plagas_zuniga`
 
 ### Apps con Múltiples Tablas
 
-Muchas apps AppSheet tienen múltiples tablas, incluyendo:
-- **Tablas principales**: Datos transaccionales (ej: registros de contratistas, cosecha)
-- **Tablas de catálogo**: Datos de referencia (ej: trabajadores, productos, estados)
-- **Tablas de configuración**: Parámetros y configuraciones
+Si una app tiene múltiples tablas (principal + catálogos), usar sufijo:
 
-#### Estrategia de Disparadores
+```
+appsheet.{app_name}_{tabla}
+```
 
-1. **Configurar Automation en cada tabla** de cada app:
-   - **Catálogos**: Disparador `On Row Add` y `On Row Update`
-   - **Tablas principales**: Disparador `On Row Add` y `On Row Update`
-   
-2. **Orden de procesamiento**: Cuando llega un registro de tabla principal:
-   - Validar que las referencias (catálogos) existan en PostgreSQL
-   - Si no existen, insertar primero el catálogo referenciado
-   - Luego insertar/actualizar el registro principal
+Ejemplo para "Cosecha":
+- `appsheet.cosecha_registros` (tabla principal)
+- `appsheet.cosecha_trabajadores` (catálogo)
+- `appsheet.cosecha_variedades` (catálogo)
 
-3. **Manejo de relaciones**: Validar referencias por `appsheet_row_id` antes de insertar
+---
 
-#### Estructura de Tablas por App
+## Consideraciones
 
-Cada app con múltiples tablas tendrá varias tablas en PostgreSQL:
+### Seguridad
+- Usar un usuario de BD dedicado para AppSheet con permisos solo en schema `appsheet`
+- No dar acceso al schema `public` (donde están datos de Wiseconn/Ubibot)
+- Credenciales gestionadas via Secret Manager
+
+### Rendimiento
+- Cloud SQL soporta múltiples conexiones concurrentes
+- Agregar índices en columnas usadas frecuentemente en filtros de AppSheet
+- Monitorear conexiones activas desde la consola de Cloud SQL
+
+### Migración desde Google Sheets
+- Exportar datos existentes de Sheets a CSV
+- Importar CSV a las tablas PostgreSQL correspondientes
+- Cambiar datasource en AppSheet de Sheets a Cloud SQL
+- Validar que la app funcione correctamente con el nuevo datasource
+
+### Reportes SQL Cruzados
+
+Con todos los datos en PostgreSQL, se pueden hacer consultas cruzadas:
 
 ```sql
--- Ejemplo: App "Contratistas Talagante" con múltiples tablas
-
--- Catálogo: Trabajadores
-CREATE TABLE appsheet.contratistas_talagante_trabajadores (
-    id SERIAL PRIMARY KEY,
-    appsheet_row_id TEXT UNIQUE,
-    synced_at TIMESTAMP DEFAULT NOW(),
-    nombre TEXT,
-    rut TEXT,
-    cargo TEXT,
-    activo BOOLEAN
-);
-
--- Catálogo: Tipos de Trabajo
-CREATE TABLE appsheet.contratistas_talagante_tipos_trabajo (
-    id SERIAL PRIMARY KEY,
-    appsheet_row_id TEXT UNIQUE,
-    synced_at TIMESTAMP DEFAULT NOW(),
-    codigo TEXT UNIQUE,
-    nombre TEXT,
-    descripcion TEXT
-);
-
--- Tabla Principal: Registros de Contratistas
-CREATE TABLE appsheet.contratistas_talagante_registros (
-    id SERIAL PRIMARY KEY,
-    appsheet_row_id TEXT UNIQUE,
-    synced_at TIMESTAMP DEFAULT NOW(),
-    source_updated_at TIMESTAMP,
-    data_hash TEXT,
-    fecha DATE,
-    trabajador_appsheet_id TEXT,  -- ID de AppSheet, no FK estricta
-    tipo_trabajo_appsheet_id TEXT, -- ID de AppSheet, no FK estricta
-    horas DECIMAL(5,2),
-    monto DECIMAL(10,2),
-    observaciones TEXT
-);
-
--- Índices para performance en joins (opcional, si se necesita)
-CREATE INDEX idx_registros_trabajador ON appsheet.contratistas_talagante_registros(trabajador_appsheet_id);
-CREATE INDEX idx_registros_tipo_trabajo ON appsheet.contratistas_talagante_registros(tipo_trabajo_appsheet_id);
-```
-
-#### Configuración para Apps Multi-Tabla
-
-En `config/appsheet_sources.yaml`:
-
-```yaml
-apps:
-  - name: "Contratistas Talagante"
-    app_id: "abc123xyz"
-    webhook_url: "https://api.run.app/api/appsheet/webhook"
-    webhook_token: "token-secreto"
-    tables:
-      # Catálogos (sincronizar primero)
-      - name: "trabajadores"
-        type: "catalog"
-        sync_order: 1
-        primary_key: ["rut"]
-        table_name: "contratistas_talagante_trabajadores"
-        
-      - name: "tipos_trabajo"
-        type: "catalog"
-        sync_order: 2
-        primary_key: ["codigo"]
-        table_name: "contratistas_talagante_tipos_trabajo"
-        
-      # Tabla principal (sincronizar después)
-      - name: "registros"
-        type: "main"
-        sync_order: 3
-        primary_key: ["appsheet_row_id"]  # Usar ID de AppSheet como PK
-        table_name: "contratistas_talagante_registros"
-        references:  # Referencias por ID, no FKs estrictas
-          - column: "trabajador_appsheet_id"
-            references_table: "contratistas_talagante_trabajadores"
-            references_column: "appsheet_row_id"
-          - column: "tipo_trabajo_appsheet_id"
-            references_table: "contratistas_talagante_tipos_trabajo"
-            references_column: "appsheet_row_id"
-```
-
-#### Manejo de Referencias en Tiempo Real
-
-Cuando llega un registro de tabla principal con referencias a catálogos:
-
-1. **Validar referencias**: Verificar si los `appsheet_row_id` de catálogos existen en PostgreSQL
-2. **Insertar catálogos faltantes**: Si una referencia no existe:
-   - Opción A: Rechazar el registro y retornar error (requiere que catálogos se inserten primero)
-   - Opción B: Insertar automáticamente el catálogo referenciado (si los datos vienen en el payload)
-3. **Insertar registro principal**: Una vez validadas/creadas las referencias, insertar el registro
-
-**Estrategia Recomendada:**
-- **Catálogos**: Deben insertarse primero (configurar Automation antes que tablas principales)
-- **Validación**: Si referencia no existe, retornar error 400 con mensaje claro
-- **Idempotencia**: Usar `appsheet_row_id` como clave única para evitar duplicados
-
-### Diagrama de Flujo de Disparador (Trigger)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    USUARIO EN APPSHEET                              │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  Usuario crea o modifica registro                                   │
-│           │                                                           │
-│           ▼                                                           │
-│  ┌──────────────────────────────────────┐                            │
-│  │ AppSheet Automation                  │                            │
-│  │ Trigger: On Row Add / On Row Update │                            │
-│  └──────────┬───────────────────────────┘                            │
-│             │                                                         │
-│             │ Detecta cambio                                          │
-│             │                                                         │
-└─────────────┼─────────────────────────────────────────────────────────┘
-              │
-              │ Construye payload JSON
-              │ {
-              │   "app_name": "Contratistas Talagante",
-              │   "table_name": "registros",
-              │   "action": "add" | "update",
-              │   "data": { ... },
-              │   "appsheet_row_id": "..."
-              │ }
-              │
-              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    HTTP POST REQUEST                                 │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  POST https://api.run.app/api/appsheet/webhook                       │
-│  Headers:                                                            │
-│    - Authorization: Bearer <token>                                    │
-│    - Content-Type: application/json                                │
-│  Body: JSON payload                                                  │
-│                                                                       │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    API REST (CLOUD RUN)                              │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 1. Validar Token                     │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-│              ▼                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 2. Identificar App y Tabla           │                          │
-│  │    (buscar en config YAML)          │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-│              ▼                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 3. Validar Referencias               │                          │
-│  │    (si es tabla principal, verificar │                          │
-│  │     que catálogos existan)           │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-│              ▼                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 4. Normalizar Datos                  │                          │
-│  │    - Agregar campos de control       │                          │
-│  │    - Calcular hash                   │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-│              ▼                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 5. Insertar/Actualizar PostgreSQL   │                          │
-│  │    INSERT ... ON CONFLICT DO UPDATE  │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-│              ▼                                                       │
-│  ┌──────────────────────────────────────┐                          │
-│  │ 6. Retornar Respuesta                │                          │
-│  │    { "status": "success",            │                          │
-│  │      "id": 123 }                     │                          │
-│  └───────────┬──────────────────────────┘                          │
-│              │                                                       │
-└──────────────┼───────────────────────────────────────────────────────┘
-               │
-               │ HTTP 200 OK
-               │
-               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    POSTGRESQL (CLOUD SQL)                           │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  Registro insertado/actualizado en:                                  │
-│  appsheet.contratistas_talagante_registros                          │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**Estrategia de Disparadores:**
-- Cada cambio en AppSheet dispara automáticamente inserción en PostgreSQL
-- No requiere polling ni sincronización programada
-- Validación de referencias en tiempo real antes de insertar
-- Manejo de errores por registro (si falla uno, no afecta otros)
-
-#### Manejo de Relaciones
-
-**Opción A: Referencias por ID de AppSheet (Recomendada) ✅**
-- Guardar `appsheet_row_id` o IDs originales como texto
-- Más flexible durante sincronización (no falla si catálogo no está sincronizado)
-- Permite sincronización parcial sin errores de integridad
-- Alineado con patrón del código existente (Wiseconn/Ubibot usan IDs, no FKs estrictas)
-
-**Opción B: Foreign Keys Estrictas**
-- Mantener integridad referencial en BD
-- Validar relaciones al insertar
-- ⚠️ Requiere sincronizar catálogos primero (si falla catálogo, falla todo)
-- ⚠️ Más rígido para sincronización incremental
-
-**Recomendación Validada**: 
-- **Usar Referencias por ID** (Opción A) para mayor flexibilidad
-- Mantener `appsheet_row_id` en todas las tablas para trazabilidad
-- Opcionalmente agregar índices en campos de referencia para performance en queries
-- Las relaciones se validan en la lógica de aplicación, no en la BD
-
-#### Casos Especiales
-
-**Catálogos compartidos entre apps:**
-- Si múltiples apps usan el mismo catálogo (ej: "Trabajadores"), crear tabla compartida:
-  ```sql
-  CREATE TABLE appsheet.catalogos_trabajadores (...);
-  ```
-- Referenciar desde múltiples apps
-
-**Catálogos que cambian raramente:**
-- Sincronizar con menor frecuencia (ej: diaria en vez de horaria)
-- Configurar `sync_frequency: "daily"` en el YAML
-
-**Tablas de historial:**
-- Si la app mantiene historial de cambios, sincronizar tabla de historial por separado
-- Considerar si mantener solo estado actual o historial completo
-
-### Diagrama de Relaciones entre Tablas
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CATALOGO_TRABAJADORES                           │
-├─────────────────────────────────────────────────────────────────────┤
-│  PK: id (SERIAL)                                                    │
-│  UK: appsheet_row_id (TEXT)                                         │
-│                                                                      │
-│  Campos:                                                            │
-│    - synced_at (TIMESTAMP)                                          │
-│    - nombre (TEXT)                                                  │
-│    - rut (TEXT)                                                     │
-│    - cargo (TEXT)                                                   │
-│                                                                      │
-│         │                                                            │
-│         │ referencia por appsheet_row_id                             │
-│         │ (no FK estricta)                                          │
-│         │                                                            │
-└─────────┼────────────────────────────────────────────────────────────┘
-          │
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        REGISTROS                                    │
-├─────────────────────────────────────────────────────────────────────┤
-│  PK: id (SERIAL)                                                    │
-│  UK: appsheet_row_id (TEXT)                                         │
-│                                                                      │
-│  Campos:                                                            │
-│    - synced_at (TIMESTAMP)                                          │
-│    - fecha (DATE)                                                   │
-│    - trabajador_appsheet_id (TEXT)  ────┐                          │
-│    - tipo_trabajo_appsheet_id (TEXT) ───┼───┐                      │
-│    - horas (DECIMAL)                    │   │                      │
-│    - monto (DECIMAL)                    │   │                      │
-│                                          │   │                      │
-│  NOTA: Relaciones por appsheet_row_id   │   │                      │
-│        No FKs estrictas en BD           │   │                      │
-│        Validación en lógica de app      │   │                      │
-└─────────────────────────────────────────┼───┼──────────────────────┘
-                                          │   │
-                                          │   │ referencia por
-                                          │   │ appsheet_row_id
-                                          │   │ (no FK estricta)
-                                          │   │
-┌─────────────────────────────────────────┘   │
-│                    CATALOGO_TIPOS_TRABAJO    │
-├──────────────────────────────────────────────┤
-│  PK: id (SERIAL)                             │
-│  UK: appsheet_row_id (TEXT)                  │
-│                                               │
-│  Campos:                                     │
-│    - synced_at (TIMESTAMP)                   │
-│    - codigo (TEXT)                           │
-│    - nombre (TEXT)                           │
-│                                               │
-└──────────────────────────────────────────────┘
+-- Ejemplo: Cruzar datos de riego (AppSheet) con sensores (Wiseconn)
+SELECT
+    r.sector,
+    r.fecha,
+    r.caudal,
+    s.values as sensor_value
+FROM appsheet.riego r
+JOIN public.wc_zones_sensors s ON r.sector = s.zone_id
+WHERE r.fecha = CURRENT_DATE;
 ```
 
 ---
 
 ## Plan de Implementación
 
-### Fase 1: Configuración
-- [ ] Crear `config/appsheet_sources.yaml` con inventario de apps y tablas
-- [ ] Identificar todas las tablas por app (principales y catálogos)
-- [ ] Mapear relaciones entre tablas
-- [ ] Crear schema `appsheet` en PostgreSQL
-- [ ] Generar token de autenticación para webhooks
+### Fase 1: Infraestructura
+- [ ] Crear schema `appsheet` en Cloud SQL
+- [ ] Crear usuario dedicado `appsheet_user` con permisos apropiados
+- [ ] Verificar conectividad de AppSheet a Cloud SQL
 
-### Fase 2: Desarrollo API REST
-- [ ] Crear endpoint webhook (`app/routes/appsheet_webhook.py`)
-  - Validar token de autenticación
-  - Identificar app y tabla desde payload
-  - Validar referencias a catálogos
-  - Normalizar datos
-- [ ] Persistencia PostgreSQL (`app/services/appsheet_database.py`)
-  - Usar patrón similar a `database.py`
-  - Implementar `INSERT ... ON CONFLICT DO UPDATE` con `appsheet_row_id`
-- [ ] Manejo de referencias por ID (validar catálogos antes de insertar)
-- [ ] Manejo de errores y respuestas HTTP apropiadas
+### Fase 2: App Piloto
+- [ ] Seleccionar 1-2 apps simples para migrar primero (ej: EPP, Trámites)
+- [ ] Crear tablas en PostgreSQL
+- [ ] Conectar AppSheet a Cloud SQL
+- [ ] Validar lectura y escritura
+- [ ] Migrar datos históricos desde Google Sheets
 
-### Fase 3: Despliegue
-- [ ] Desplegar API REST en Cloud Run
-- [ ] Configurar dominio y HTTPS
-- [ ] Configurar Secret Manager (token de autenticación)
-- [ ] Logging estructurado (JSON)
+### Fase 3: Rollout por Categoría
+- [ ] Migrar apps de Administración y Logística (6 apps)
+- [ ] Migrar apps de Maquinaria y Recursos Operativos (9 apps)
+- [ ] Migrar apps de Control Técnico y Agronómico (12 apps)
+- [ ] Migrar apps de Operaciones de Terreno y Producción (13 apps)
 
-### Fase 4: Configuración en AppSheet
-- [ ] Configurar Automation en cada app (empezar con catálogos)
-- [ ] Configurar disparadores `On Row Add` y `On Row Update`
-- [ ] Configurar webhook URL y token en cada Automation
-- [ ] Probar con 1-2 apps de prueba
-
-### Fase 5: Rollout
-- [ ] Validar datos insertados correctamente
-- [ ] Expandir a todas las apps
-- [ ] Monitorear logs y errores
+### Fase 4: Reportes
+- [ ] Crear queries SQL para reportes cruzados
+- [ ] Conectar herramientas de BI si es necesario
 
 ---
 
-## Configuración
+## Infraestructura Existente
 
-### Variables de Entorno (Secret Manager)
-- `APPSHEET_WEBHOOK_TOKEN`: Token de autenticación para validar webhooks
-- `APPSHEET_CONFIG_PATH`: Ruta al YAML de configuración
-- `DATABASE_URL`: URL de conexión a PostgreSQL (ya existe)
-
-### Archivo de Configuración
-
-`config/appsheet_sources.yaml`:
-```yaml
-webhook:
-  url: "https://api-tu-proyecto.run.app/api/appsheet/webhook"
-  token: "${APPSHEET_WEBHOOK_TOKEN}"  # Desde Secret Manager
-
-apps:
-  - name: "Contratistas Talagante"
-    app_id: "abc123xyz"
-    tables:
-      - name: "trabajadores"
-        type: "catalog"
-        table_name: "contratistas_talagante_trabajadores"
-        primary_key: ["appsheet_row_id"]
-        
-      - name: "registros"
-        type: "main"
-        table_name: "contratistas_talagante_registros"
-        primary_key: ["appsheet_row_id"]
-        references:
-          - column: "trabajador_appsheet_id"
-            references_table: "contratistas_talagante_trabajadores"
-            references_column: "appsheet_row_id"
-  # ... más apps
-```
+| Componente | Servicio | Región |
+|-----------|---------|--------|
+| Base de Datos | Cloud SQL PostgreSQL | southamerica-west1 (Santiago) |
+| Jobs (Wiseconn/Ubibot) | Cloud Run Jobs | southamerica-west1 |
+| Secrets | Secret Manager | Global |
+| Scheduler | Cloud Scheduler | southamerica-east1 |
 
 ---
 
-## Consideraciones Técnicas
-
-### Rate Limiting
-- **AppSheet Automation**: Límites dependen del plan (típicamente 100-1000 requests/día)
-- **API REST**: Cloud Run puede manejar múltiples requests concurrentes
-- **Estrategia**: Implementar rate limiting en el endpoint si es necesario
-- **Manejo de picos**: Cloud Run escala automáticamente
-
-### Idempotencia
-- Usar `INSERT ... ON CONFLICT (appsheet_row_id) DO UPDATE` en PostgreSQL
-- Clave única: `appsheet_row_id` (ID de fila en AppSheet)
-- Si llega el mismo registro dos veces, se actualiza en vez de duplicar
-- Alineado con patrón del código existente (ver `database.py`)
-
-### Manejo de Errores
-- **Errores de validación**: Retornar HTTP 400 con mensaje descriptivo
-- **Errores de BD**: Retornar HTTP 500, loggear error
-- **Referencias faltantes**: Retornar HTTP 400 indicando qué catálogo falta
-- **Timeouts**: Cloud Run tiene timeout de 60 min (suficiente para inserts simples)
-
-### Validación de Referencias
-- Cuando llega registro de tabla principal, validar que catálogos referenciados existan
-- Consultar PostgreSQL por `appsheet_row_id` antes de insertar
-- Si referencia no existe, retornar error 400 con mensaje claro
-- Recomendación: Configurar Automation de catálogos antes que tablas principales
-
-### Relaciones
-- **No usar Foreign Keys estrictas** (más flexible)
-- Guardar `appsheet_row_id` de referencias como texto
-- Validar relaciones en lógica de aplicación antes de insertar
-- Crear índices en campos de referencia para performance en validación
-
-### Catálogos Compartidos
-- Identificar catálogos comunes entre apps (ej: "Trabajadores")
-- Considerar tabla compartida `appsheet.catalogos_*` si múltiples apps lo usan
-- Mismo webhook puede manejar múltiples apps que usan el mismo catálogo
-
-### Performance
-- Cada request inserta un registro (no batch necesario)
-- Usar transacciones simples (INSERT/UPDATE)
-- Índices en `appsheet_row_id` para búsquedas rápidas
-- Cloud Run escala automáticamente según carga
-
----
-
-## Estructura de Código
-
-```
-app/
-├── routes/
-│   └── appsheet_webhook.py  # Endpoint webhook (/api/appsheet/webhook)
-├── services/
-│   └── appsheet_database.py # Persistencia PostgreSQL
-└── __init__.py              # Flask app factory
-
-config/
-└── appsheet_sources.yaml    # Configuración de apps y tablas
-
-main.py                       # Entry point (Cloud Run)
-```
-
----
-
-## Próximos Pasos
-
-1. **Desarrollo API REST**: Crear endpoint webhook en Cloud Run
-2. **Configuración**: Crear YAML con inventario completo de apps y tablas
-3. **Despliegue**: Desplegar API REST y obtener URL pública
-4. **Configuración AppSheet**: Configurar Automation en cada app (empezar con catálogos)
-5. **Testing**: Probar con 1-2 apps de prueba
-6. **Rollout**: Expandir Automation a todas las apps
-
----
-
-## Referencias
-
-- [AppSheet Automation](https://help.appsheet.com/en/articles/automation)
-- [AppSheet Webhooks](https://help.appsheet.com/en/articles/webhooks)
-- [Cloud Run Services](https://cloud.google.com/run/docs/create-services)
-- [Flask REST API](https://flask.palletsprojects.com/)
-
----
-
-## Validación de Estrategia
-
-### ✅ Estrategia Validada
-
-La estrategia propuesta ha sido validada contra:
-- **AppSheet Automation**: Soporta disparadores (triggers) que pueden llamar webhooks HTTP
-- **Google Cloud Best Practices**: Cloud Run es ideal para APIs REST con escalado automático
-- **Código Existente**: Alineado con patrones de `database.py` para persistencia
-- **Mejores Prácticas**: Inserción en tiempo real, validación de referencias, idempotencia
-
-### ⚠️ Consideraciones Importantes
-
-1. **Configuración en AppSheet**: Cada app necesita Automation configurado manualmente
-2. **Orden de Configuración**: Configurar Automation de catálogos antes que tablas principales
-3. **Validación de Referencias**: Validar que catálogos existan antes de insertar registros principales
-4. **Manejo de Errores**: Retornar errores claros para debugging en AppSheet
-
-### 📋 Decisiones Pendientes
-
-- [ ] Definir formato exacto del payload JSON que enviará AppSheet
-- [ ] Identificar catálogos compartidos entre apps
-- [ ] Decidir estrategia si referencia a catálogo no existe (error vs insertar automáticamente)
-- [ ] Configurar token de autenticación y almacenarlo en Secret Manager
-- [ ] Definir estrategia de historial (solo actual vs histórico completo)
-
----
-
-**Última actualización**: Febrero 2026  
-**Estado**: Planificación - Validado
+**Última actualización**: Febrero 2026
+**Estado**: Planificación
