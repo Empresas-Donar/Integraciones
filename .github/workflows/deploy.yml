@@ -11,6 +11,7 @@ env:
   REGION: southamerica-west1  # Santiago, Chile - cerca de la DB
   # Nombre del job diferente para staging vs producción
   JOB_NAME: integraciones-job-staging
+  ALERTS_JOB_NAME: integraciones-alerts-staging
 
 jobs:
   deploy:
@@ -55,7 +56,21 @@ jobs:
             --set-secrets "DATABASE_URL=DATABASE_URL:latest,API_KEY=API_KEY:latest,SECRET_KEY=SECRET_KEY:latest,UBIBOT_ACCOUNT_KEY=UBIBOT_ACCOUNT_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest" \
             --set-env-vars "ENV=production,TZ=America/Santiago"
 
-      - name: Output Job URL
+      - name: Deploy Daily Report Job to Cloud Run
         run: |
-          echo "Job deployed successfully!"
-          echo "View job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.JOB_NAME }}"
+          gcloud run jobs deploy ${{ env.ALERTS_JOB_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 10m \
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,RESEND_API_KEY=RESEND_API_KEY:latest" \
+            --set-env-vars "ENV=production,TZ=America/Santiago" \
+            --command "python,daily_channel_report.py"
+
+      - name: Output Job URLs
+        run: |
+          echo "Jobs deployed successfully!"
+          echo "Main job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.JOB_NAME }}"
+          echo "Alerts job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.ALERTS_JOB_NAME }}"
