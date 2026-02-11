@@ -1,9 +1,6 @@
-import os
-from sendgrid.helpers.mail import Mail, Email, To, Content
 from datetime import datetime, timedelta
 import pytz
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine, and_
+from sqlalchemy import and_
 from .models import UbibotChannels, UbibotFields
 
 class UbibotAlertManager:

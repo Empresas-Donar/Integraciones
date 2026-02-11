@@ -14,11 +14,11 @@ def scheduled_job():
         logging.error(f"Errores de run.py: {result.stderr}")
 
 def scheduled_sendgrid_job():
-    logging.info("Ejecutando test_sendgrid.py...")
-    result = subprocess.run(["python3", "test_sendgrid.py"], capture_output=True, text=True)
-    logging.info(f"Salida de test_sendgrid.py: {result.stdout}")
+    logging.info("Ejecutando daily_channel_report.py...")
+    result = subprocess.run(["python3", "daily_channel_report.py"], capture_output=True, text=True)
+    logging.info(f"Salida de daily_channel_report.py: {result.stdout}")
     if result.stderr:
-        logging.error(f"Errores de test_sendgrid.py: {result.stderr}")
+        logging.error(f"Errores de daily_channel_report.py: {result.stderr}")
 
 scheduler = BackgroundScheduler()
 
