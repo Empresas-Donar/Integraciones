@@ -42,7 +42,7 @@ def manage_data(processed_data, data_type):
             """)
             existing_results = db.session.execute(existing_query).fetchall()
             existing_set = set(
-                (str(row[0]), str(row[1]), str(row[2]), str(row[3]) if row[3] else None)
+                (str(row[0].replace(tzinfo=None) if hasattr(row[0], 'tzinfo') else row[0]), str(row[1]), str(row[2]), str(row[3]) if row[3] else None)
                 for row in existing_results
             )
             logging.info(f"Cargados {len(existing_set)} registros existentes en memoria")
@@ -64,15 +64,21 @@ def manage_data(processed_data, data_type):
                 else:
                     zone_id = str(zone_id)
 
+                # Normalizar created_at a naive (sin timezone) para comparar con DB
+                if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+                    created_at_naive = created_at.replace(tzinfo=None)
+                else:
+                    created_at_naive = created_at
+
                 # Verificar en memoria en lugar de query individual
-                key = (str(created_at), str(sensor_id), farm_id, zone_id)
+                key = (str(created_at_naive), str(sensor_id), farm_id, zone_id)
                 if key not in existing_set:
                     new_record = WCZonesSensors(
                         sensor_id=sensor_id,
                         name=item.get("name"),
                         unit=item.get("unit"),
                         values=item.get("values"),
-                        created_at=created_at,
+                        created_at=created_at_naive,
                         date=item.get("date"),
                         hour=item.get("hour"),
                         zone_id=zone_id,

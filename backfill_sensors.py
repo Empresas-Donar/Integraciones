@@ -64,7 +64,7 @@ def get_existing_keys(chunk_start, chunk_end):
     """), {"start": chunk_start, "end": chunk_end}).fetchall()
 
     return set(
-        (str(row[0]), str(row[1]), str(row[2]), str(row[3]) if row[3] else None)
+        (str(row[0].replace(tzinfo=None) if hasattr(row[0], 'tzinfo') else row[0]), str(row[1]), str(row[2]), str(row[3]) if row[3] else None)
         for row in result
     )
 
@@ -151,6 +151,9 @@ def backfill(start_date, end_date, chunk_days=30, dry_run=False, delay=0.2):
 
                 for v in processed_sd['values']:
                     created_at = v.get('created_at')
+                    # Normalizar a naive (sin timezone) para coincidir con DB
+                    if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+                        created_at = created_at.replace(tzinfo=None)
                     key = (str(created_at), str(sensor_id), str(farmid), zone_id)
                     if key in existing_keys:
                         total_skipped += 1
