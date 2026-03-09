@@ -102,15 +102,15 @@ def run_fetch_process():
                             None
                         )
                         if matching_measure:
-                            first_value = (
-                                processed_sensor_data["values"][0]["value"]
+                            last_value = (
+                                processed_sensor_data["values"][-1]
                                 if processed_sensor_data["values"]
                                 else None
                             )
-                            matching_measure["values"] = first_value
-                            matching_measure["created_at"] = processed_sensor_data["values"][0].get("created_at", None)
-                            matching_measure["date"] = processed_sensor_data["values"][0].get("date", None)
-                            matching_measure["hour"] = processed_sensor_data["values"][0].get("hour", None)
+                            matching_measure["values"] = last_value["value"] if last_value else None
+                            matching_measure["created_at"] = last_value.get("created_at", None) if last_value else None
+                            matching_measure["date"] = last_value.get("date", None) if last_value else None
+                            matching_measure["hour"] = last_value.get("hour", None) if last_value else None
                             matching_measure["farm_id"] = farmId
                             combined_data.append(matching_measure)
 
