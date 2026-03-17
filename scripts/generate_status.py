@@ -101,14 +101,18 @@ def status_icon(ok, warning, total_possible=None):
 
 def day_status(exec_data, et0_data, ubi_data, d):
     """Compute overall day status: 🟢 🟡 🔴 ⚪"""
+    ubi_channels = ubi_data.get(d, 0)
+
     if d not in exec_data:
+        # Pipeline didn't run — check if data exists anyway (backfilled)
+        if ubi_channels > 0 or et0_data.get(d, 0) > 0:
+            return "🟡"
         return "⚪"
 
     e = exec_data[d]
     wc_rate = e["wc_ok"] / e["total"] if e["total"] else 0
     ubi_rate = e["ubi_ok"] / e["total"] if e["total"] else 0
     et0_farms = et0_data.get(d, 0)
-    ubi_channels = ubi_data.get(d, 0)
 
     all_ok = (
         wc_rate == 1.0
@@ -142,8 +146,28 @@ def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_
 
         overall = day_status(exec_data, et0_data, ubi_data, d)
 
+        # Ubibot (always available — independent of execution_log)
+        ubi_ch = ubi_data.get(d, 0)
+        temp = temp_data.get(d)
+        temp_str = f" `{temp}°C`" if temp is not None else ""
+
+        # Irrigation (always available — based on real event timestamps)
+        irr = irr_data.get(d, {})
+        zuniga_icon = "💧" if 14245 in irr else "—"
+        imaipo_icon = "💧" if 60544 in irr else "—"
+
         if d not in exec_data:
-            lines.append(f"| {day:02d} | ⚪ | ⚪ | ⚪ | — | — |")
+            # Pipeline didn't run — show data that exists independently
+            if ubi_ch >= UBIBOT_GREEN_THRESHOLD:
+                ubi_icon = "🟢"
+            elif ubi_ch >= UBIBOT_YELLOW_THRESHOLD:
+                ubi_icon = "🟡"
+            elif ubi_ch > 0:
+                ubi_icon = "🔴"
+            else:
+                ubi_icon = "⚪"
+            ubi_str = f"`{ubi_ch} canales`{temp_str}" if ubi_ch > 0 else "⚪"
+            lines.append(f"| {day:02d} | {overall} | ⚪ | {ubi_icon} {ubi_str} | {zuniga_icon} | {imaipo_icon} |")
             continue
 
         e = exec_data[d]
@@ -160,22 +184,12 @@ def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_
             wc_icon = "🟡"
 
         # Ubibot status
-        ubi_ch = ubi_data.get(d, 0)
         if ubi_rate == 1.0 and ubi_ch >= UBIBOT_GREEN_THRESHOLD:
             ubi_icon = "🟢"
         elif ubi_ch < UBIBOT_YELLOW_THRESHOLD:
             ubi_icon = "🔴"
         else:
             ubi_icon = "🟡"
-
-        # Irrigation per field
-        irr = irr_data.get(d, {})
-        zuniga_icon = "💧" if 14245 in irr else "—"
-        imaipo_icon = "💧" if 60544 in irr else "—"
-
-        # Ubibot avg temperature
-        temp = temp_data.get(d)
-        temp_str = f" `{temp}°C`" if temp is not None else ""
 
         lines.append(
             f"| {day:02d} | {overall} | {wc_icon} `{e['wc_ok']}/{e['total']}` "
