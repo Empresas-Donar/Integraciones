@@ -112,11 +112,11 @@ WHERE fs.irrigation_sector = 'Sector 2 EQ 2 (Lap14)';
 - `88158` T-Peonias, `88155` T-Peonias Sin Malla, `88251` T-Peonías Ensayo 3, `88259` T-Pimentónes Macro Tunel, `88271` T-Túnel Peonías Ensayo 1
 - `89019` Z-IVU 115 2018, `71208` Z-Kiwi
 
-## Database Views
+## Database Functions
 
-`v_evapo_diario` — evapotranspiration per day. Joins `wc_zones_sensors` + `wc_farms_zones`, returns `predio`, `sector`, `cultivo`, `sensor` (Et0/Etc), `fecha`, `valor_mm` (MAX per day). Note: `zone_id` in `wc_zones_sensors` is stored as varchar with `.0` suffix (e.g. `"114940.0"`), so the JOIN uses `CAST(CAST(zone_id AS float) AS integer)`.
+`f_kc(p_fecha_desde, p_fecha_hasta, p_field[], p_orchard[])` — Main reporting function. Returns daily Kc per orchard by joining `wc_farms_realirrigation` + `field_sectors` + `wc_zones_sensors` (Et0). Et0 is averaged across all EMAs per field. `p_field` and `p_orchard` are optional filters. Columns: `fecha`, `field`, `orchard`, `crop_type`, `irrigated_mm`, `et0_mm`, `kc`.
 
-`v_kc_diario` — Kc report per cuartel per day. Joins `wc_farms_realirrigation` + `wc_farms_zones` + `v_evapo_diario`. Et0 is averaged across all EMAs per predio (Zuñiga has 2 EMAs). Columns: `cuartel`, `predio`, `fecha`, `regado_mm`, `evapo_mm`, `kc`.
+`f_ambient_temperature(p_fecha_desde, p_fecha_hasta, p_canales[])` — Hourly ambient temperature from Ubibot sensors. Excludes tunnel sensors (T-* prefix). Columns: `date`, `hour`, `channel`, `channel_id`, `temp_avg`, `temp_min`, `temp_max`.
 
 ## Production DB Access
 
