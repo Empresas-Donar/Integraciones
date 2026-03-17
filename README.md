@@ -1,62 +1,77 @@
-# Farm Irrigation Management System
+# Sistema de Integración de Riego — Empresas Donar
 
-Agricultural irrigation management system that integrates sensor data from Wiseconn and Ubibot.
-
-## Table of Contents
-1. [Installation](#installation)
-2. [Environment Setup](#environment-setup)
-3. [Development vs Production](#development-vs-production)
-4. [Git-Crypt Setup](#git-crypt-setup)
-5. [Google Cloud Deployment](#google-cloud-deployment)
-6. [Data Flow & Architecture](#data-flow--architecture)
-7. [Usage](#usage)
-8. [API Documentation](#api-documentation)
-9. [Database Schema](#database-schema)
-10. [AppSheet Integration](#appsheet-integration)
-11. [Contributors](#contributors)
+Sistema de gestión de riego agrícola que integra datos de sensores de Wiseconn y Ubibot para los predios **Zuñiga** e **Isla de Maipo**.
 
 ---
 
-## Installation
+## ¿Eres usuario no técnico?
 
-### 1. Clone the repository
+Si trabajas con reportes, análisis agronómicos o simplemente necesitas entender los datos disponibles, estos son los documentos pensados para ti:
+
+| Documento | Para qué sirve |
+|-----------|---------------|
+| [**DATOS.md**](DATOS.md) | Qué significa cada tabla, columna y función. Con ejemplos SQL listos para usar |
+| [**STATUS.md**](STATUS.md) | Calendario histórico del estado del sistema (sensores activos, riego, temperatura) — actualizado diariamente |
+| [**SENSORS.md**](SENSORS.md) | Inventario completo de sensores por sector y cuartel |
+
+---
+
+## Índice (técnico)
+
+1. [Instalación](#instalación)
+2. [Variables de entorno](#variables-de-entorno)
+3. [Desarrollo vs Producción](#desarrollo-vs-producción)
+4. [Git-Crypt](#git-crypt)
+5. [Despliegue en Google Cloud](#despliegue-en-google-cloud)
+6. [Arquitectura y flujo de datos](#arquitectura-y-flujo-de-datos)
+7. [Uso](#uso)
+8. [Documentación de APIs](#documentación-de-apis)
+9. [Schema de base de datos](#schema-de-base-de-datos)
+10. [Integración AppSheet](#integración-appsheet)
+11. [Contribuidores](#contribuidores)
+
+---
+
+## Instalación
+
+### 1. Clonar el repositorio
 ```bash
 git clone <repository-url>
 cd Integraciones
 ```
 
-### 2. Unlock encrypted files
+### 2. Desencriptar archivos
 Request the `git-crypt-integraciones` key file from a team member, then run:
 ```bash
 git-crypt unlock /path/to/git-crypt-integraciones
 ```
 
-### 3. Create virtual environment
+### 3. Crear entorno virtual
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # macOS/Linux
 ```
 
-### 4. Install dependencies
+### 4. Instalar dependencias
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Setup local database (PostgreSQL)
+### 5. Crear base de datos local (PostgreSQL)
 ```bash
 createdb donar_dev
 ```
 
-### 6. Run the application
+### 6. Ejecutar la aplicación
 ```bash
 python run.py
 ```
 
 ---
 
-## Environment Setup
+## Variables de entorno
 
-### Environment Variables
+### Variables de entorno
 
 | Variable | Description |
 |----------|-------------|
@@ -67,7 +82,7 @@ python run.py
 | `UBIBOT_ACCOUNT_KEY` | Ubibot API key |
 | `RESEND_API_KEY` | Resend API key for email alerts |
 
-### Files
+### Archivos
 
 | File | Purpose | Git Status |
 |------|---------|------------|
@@ -75,7 +90,7 @@ python run.py
 | `.env.local` | Local development overrides | Ignored (not in git) |
 | `.env.example` | Template for new developers | Public |
 
-### Example `.env.local` for development:
+### Ejemplo de `.env.local` para desarrollo:
 ```env
 ENV=development
 DATABASE_URL=postgresql://your_user@localhost/donar_dev
@@ -83,9 +98,9 @@ DATABASE_URL=postgresql://your_user@localhost/donar_dev
 
 ---
 
-## Development vs Production
+## Desarrollo vs Producción
 
-The application automatically detects the environment:
+La aplicación detecta el entorno automáticamente:
 
 | Scenario | ENV | Database | Result |
 |----------|-----|----------|--------|
@@ -93,8 +108,8 @@ The application automatically detects the environment:
 | Production server | production | Remote DB | ✅ Runs |
 | Local without `.env.local` | development | Remote DB | ❌ Blocked |
 
-### Safety Check
-The application includes a safety check that prevents accidentally connecting to the production database from a development environment:
+### Protección de base de datos
+La aplicación incluye un bloqueo que impide conectarse accidentalmente a la base de datos de producción desde entorno de desarrollo:
 
 ```python
 # app/environment.py
@@ -104,28 +119,28 @@ if ENV != 'production' and not is_local_database(DATABASE_URL):
 
 ---
 
-## Git-Crypt Setup
+## Git-Crypt
 
-The `.env` file containing production credentials is encrypted with git-crypt.
+El archivo `.env` con credenciales de producción está encriptado con git-crypt.
 
-### For new team members:
-1. Get the `git-crypt-integraciones` key file from a team member
-2. Run: `git-crypt unlock /path/to/git-crypt-integraciones`
+### Para nuevos integrantes del equipo:
+1. Solicitar el archivo `git-crypt-integraciones` a un miembro del equipo
+2. Ejecutar: `git-crypt unlock /path/to/git-crypt-integraciones`
 
-### Export the key (for sharing with team):
+### Exportar la llave (para compartir):
 ```bash
 git-crypt export-key git-crypt-integraciones
 ```
 
-**Important:** Never commit the key file to git. It's already in `.gitignore`.
+**Importante:** Nunca commitear el archivo de llave. Ya está en `.gitignore`.
 
 ---
 
-## Google Cloud Deployment
+## Despliegue en Google Cloud
 
-The application runs on **Google Cloud Run Jobs** with automatic deployment via GitHub Actions.
+La aplicación corre en **Google Cloud Run Jobs** con despliegue automático vía GitHub Actions.
 
-### Architecture
+### Arquitectura
 
 | Component | Service | Region |
 |-----------|---------|--------|
@@ -135,9 +150,9 @@ The application runs on **Google Cloud Run Jobs** with automatic deployment via 
 | Scheduler | Cloud Scheduler | southamerica-east1 (São Paulo) |
 | Database | Cloud SQL PostgreSQL | southamerica-west1 |
 
-### Automatic Deployment (CI/CD)
+### Despliegue automático (CI/CD)
 
-Push to `main` branch triggers automatic deployment:
+Un push a la rama `main` dispara el despliegue automático:
 
 ```
 Push to main → GitHub Actions → Build Docker → Push to Artifact Registry → Deploy to Cloud Run
@@ -145,9 +160,9 @@ Push to main → GitHub Actions → Build Docker → Push to Artifact Registry �
 
 The workflow is defined in `.github/workflows/deploy.yml`.
 
-### GitHub Secrets Required
+### Secrets de GitHub requeridos
 
-Configure these in GitHub → Settings → Secrets and variables → Actions:
+Configurar en GitHub → Settings → Secrets and variables → Actions:
 
 | Secret | Description |
 |--------|-------------|
@@ -155,9 +170,9 @@ Configure these in GitHub → Settings → Secrets and variables → Actions:
 | `WIF_PROVIDER` | Workload Identity Federation provider URL |
 | `WIF_SERVICE_ACCOUNT` | Service account email for GitHub Actions |
 
-### Google Cloud Secrets (Secret Manager)
+### Secrets de Google Cloud (Secret Manager)
 
-These secrets are stored in Google Cloud Secret Manager and injected at runtime:
+Estos secrets se guardan en GCP Secret Manager y se inyectan en tiempo de ejecución:
 
 | Secret | Description |
 |--------|-------------|
@@ -167,13 +182,13 @@ These secrets are stored in Google Cloud Secret Manager and injected at runtime:
 | `UBIBOT_ACCOUNT_KEY` | Ubibot API key |
 | `RESEND_API_KEY` | Resend API key |
 
-### Scheduled Execution
+### Ejecución programada
 
-Cloud Scheduler runs the job automatically:
+Cloud Scheduler ejecuta el job automáticamente:
 - **Schedule**: Every hour at minute 0 (`0 * * * *`)
 - **Timezone**: America/Santiago (Chile)
 
-### Manual Execution
+### Ejecución manual
 
 ```bash
 # Execute job manually
@@ -183,22 +198,22 @@ gcloud run jobs execute integraciones-job-staging --region=southamerica-west1 --
 gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=integraciones-job-staging" --project=integraciones-484915 --limit=50
 ```
 
-### View in Console
+### Ver en consola GCP
 
 - **Jobs**: https://console.cloud.google.com/run/jobs?project=integraciones-484915
 - **Logs**: https://console.cloud.google.com/logs?project=integraciones-484915
 - **Scheduler**: https://console.cloud.google.com/cloudscheduler?project=integraciones-484915
 
-### Initial Setup (for new projects)
+### Configuración inicial (proyectos nuevos)
 
-See [SETUP_GCLOUD.md](SETUP_GCLOUD.md) for detailed instructions on:
+Ver [SETUP_GCLOUD.md](SETUP_GCLOUD.md) para instrucciones detalladas de:
 1. Enabling required APIs
 2. Creating Artifact Registry
 3. Setting up Secret Manager
 4. Configuring Workload Identity Federation for GitHub Actions
 5. Creating Cloud Scheduler
 
-### Cost Estimate
+### Costo estimado mensual
 
 | Service | Monthly Cost |
 |---------|-------------|
@@ -210,11 +225,11 @@ See [SETUP_GCLOUD.md](SETUP_GCLOUD.md) for detailed instructions on:
 
 ---
 
-## Data Flow & Architecture
+## Arquitectura y flujo de datos
 
-### Overview
+### Visión general
 
-The system integrates two data sources for agricultural monitoring:
+El sistema integra dos fuentes de datos para monitoreo agrícola:
 
 ```
 ┌─────────────┐     ┌─────────────────────┐     ┌──────────────┐
@@ -236,11 +251,11 @@ The system integrates two data sources for agricultural monitoring:
 
 ---
 
-### Ubibot Integration
+### Integración Ubibot
 
-**What is it?** IoT sensors that measure environmental conditions (temperature, humidity, light, etc.)
+**Qué es:** Sensores IoT que miden condiciones ambientales y de suelo (temperatura, humedad, luz, etc.)
 
-#### Data Structure
+#### Estructura de datos
 
 ```
 Channels (ubi_channels)
@@ -272,27 +287,27 @@ Final Fields (ubi_channels_fields)
 └── count: 12
 ```
 
-#### Processing Flow
+#### Flujo de procesamiento
 
 ```
-1. API Ubibot → clean_channel_data() → Channel list
-2. API Ubibot → clean_channel_data_summary() → Hourly summaries
-3. create_final_dataframe() → Combines channels + summaries → Final fields table
+1. API Ubibot → clean_channel_data() → Lista de canales
+2. API Ubibot → clean_channel_data_summary() → Resúmenes horarios
+3. create_final_dataframe() → Combina canales + resúmenes → Tabla de campos final
 ```
 
-#### Important Notes
+#### Notas importantes
 
-- **Not all devices have 15 sensors**: Most devices only have 3-4 sensors (temperature, humidity, etc.). The system searches for all 15 possible fields but only processes those that exist.
-- **Hourly aggregation**: Data is aggregated hourly with avg, min, max, and count metrics.
-- **11-day window**: The system only checks for existing records within the last 11 days to optimize queries.
+- **No todos los dispositivos tienen 15 sensores**: La mayoría tiene 3-4 (temperatura, humedad, etc.). El sistema busca los 15 campos posibles pero solo procesa los que existen.
+- **Agregación horaria**: Los datos se agregan por hora con métricas avg, min, max y count.
+- **Ventana de 11 días**: El sistema solo verifica registros existentes en los últimos 11 días para optimizar las queries.
 
 ---
 
-### Wiseconn Integration
+### Integración Wiseconn
 
-**What is it?** Smart irrigation system - controls and monitors irrigation in agricultural fields.
+**Qué es:** Sistema de riego inteligente — controla y monitorea el riego en los campos agrícolas.
 
-#### Data Structure
+#### Estructura de datos
 
 ```
 Zones (wc_farms_zones)
@@ -326,22 +341,22 @@ Sensors/Measures (wc_zones_sensors)
 └── zone_id: which zone it belongs to
 ```
 
-#### Processing Flow
+#### Flujo de procesamiento
 
 ```
-1. API Wiseconn /zones → process_data_wc_farms_zones() → Zones
-2. API Wiseconn /irrigation → process_data_irrigation() → Scheduled irrigation
-3. API Wiseconn /realIrrigation → process_data_real_irrigation() → Actual irrigation
-4. API Wiseconn /measures → process_data_measures() → Sensors
+1. API Wiseconn /zones → process_data_wc_farms_zones() → Sectores de riego
+2. API Wiseconn /irrigation → process_data_irrigation() → Riego programado
+3. API Wiseconn /realIrrigation → process_data_real_irrigation() → Riego ejecutado
+4. API Wiseconn /measures → process_data_measures() → Sensores
 ```
 
 ---
 
 ### Logging (Google Cloud)
 
-The system uses structured JSON logging for Google Cloud Logging.
+El sistema usa logging JSON estructurado compatible con Google Cloud Logging.
 
-#### Log Format
+#### Formato de log
 
 ```json
 {
@@ -357,7 +372,7 @@ The system uses structured JSON logging for Google Cloud Logging.
 }
 ```
 
-#### Event Types
+#### Tipos de evento
 
 | Service | Event Type | Description |
 |---------|------------|-------------|
@@ -370,7 +385,7 @@ The system uses structured JSON logging for Google Cloud Logging.
 | `data_processing` | `WISECONN_ZONES_PROCESSED` | Zones processed |
 | `utils` | `FINAL_DATAFRAME_CREATED` | Final dataframe created |
 
-#### Filtering in Google Cloud Console
+#### Filtros en Google Cloud Console
 
 ```
 # Filter by service
@@ -388,26 +403,26 @@ jsonPayload.data.channel_id=88738
 
 ---
 
-## Usage
+## Uso
 
-### Run once (development)
+### Ejecutar una vez (desarrollo)
 ```bash
 source venv/bin/activate
 python run.py
 ```
 
-### Run with scheduler (production)
+### Ejecutar con scheduler (producción local)
 ```bash
 python task_scheduler.py
 ```
 
-Scheduled tasks:
-- **Hourly**: Fetch data from Wiseconn and Ubibot sensors
-- **Daily at 7:20 AM**: Send alert emails for disconnected sensors
+Tareas programadas:
+- **Cada hora**: Descarga datos de Wiseconn y Ubibot
+- **Diario a las 7:20 AM**: Envía alertas de sensores desconectados
 
 ---
 
-## API Documentation
+## Documentación de APIs
 
 ### Wiseconn API
 
@@ -532,9 +547,11 @@ GET /channels/{channelId}/summary?account_key=XXX&results=5000&start=YYYY-MM-DD&
 
 ---
 
-## Database Schema
+## Schema de base de datos
 
-### Wiseconn Tables
+> Para una descripción completa de cada tabla y columna, ver [DATOS.md](DATOS.md).
+
+### Tablas Wiseconn
 
 #### `wc_farms_zones`
 | Column | Type | Description |
@@ -579,7 +596,7 @@ GET /channels/{channelId}/summary?account_key=XXX&results=5000&start=YYYY-MM-DD&
 | unit | text | Unit |
 | values | float | Last value |
 
-### Ubibot Tables
+### Tablas Ubibot
 
 #### `ubi_channel_data`
 | Column | Type | Description |
@@ -607,7 +624,7 @@ GET /channels/{channelId}/summary?account_key=XXX&results=5000&start=YYYY-MM-DD&
 | max | float | Maximum |
 | count | int | Count |
 
-### System Tables
+### Tablas de sistema
 
 #### `execution_log`
 | Column | Type | Description |
@@ -655,7 +672,7 @@ Integraciones/
 
 ---
 
-## AppSheet Integration
+## Integración AppSheet
 
 Migración de 40 apps AppSheet desde Google Sheets a PostgreSQL (Cloud SQL) como datasource directo.
 
@@ -670,7 +687,7 @@ Migración de 40 apps AppSheet desde Google Sheets a PostgreSQL (Cloud SQL) como
 
 ---
 
-## Contributors
+## Contribuidores
 
 - Bedomax
 - Heimdallgg
