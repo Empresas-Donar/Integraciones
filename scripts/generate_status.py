@@ -57,10 +57,10 @@ def fetch_wc_et0_days(cur):
 
 
 def fetch_ubibot_channels_per_day(cur):
-    """Active Ubibot channels per day."""
+    """Active Ubibot channels per day — uses ubi_channels_fields which has full history."""
     cur.execute("""
         SELECT date, COUNT(DISTINCT channel_id) AS canales
-        FROM ubi_channel_summary
+        FROM ubi_channels_fields
         GROUP BY date
     """)
     return {r[0]: r[1] for r in cur.fetchall()}
