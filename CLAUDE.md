@@ -23,6 +23,16 @@ flask db migrate -m "description"
 flask db upgrade
 ```
 
+## Naming Conventions
+
+All database objects and code identifiers must be in **English**:
+- Table names: `field_sectors`, `execution_log`, `wc_farms_zones`
+- Column names: `irrigation_sector`, `crop_type`, `created_at`
+- View names: use English (existing Spanish views `v_evapo_diario`, `v_kc_diario` are legacy)
+- Function names, variable names, and Python identifiers: English only
+
+Data values (farm names, orchard names, crop names) may remain in Spanish as they reflect real-world field names.
+
 ## Environment & Safety
 
 `.env.local` overrides `.env` for local dev. `app/environment.py` runs a safety check on import — it **blocks execution** if `ENV != production` and `DATABASE_URL` points to a remote host. To work locally, always set `DATABASE_URL` to localhost in `.env.local`.
@@ -64,9 +74,63 @@ The system runs as a **Cloud Run Job** (project `integraciones-484915`, region `
 - **Sensor data**: `wc_zones_sensors` stores only the **latest** value per sensor per run (not full time-series per sensor). For Et0/Etc, MAX per day = daily accumulated total
 - **Logging**: Structured JSON logs via `log_processing_event()` helpers, compatible with Google Cloud Logging filters (`jsonPayload.service`, `jsonPayload.event_type`)
 
+## Master Table: `field_sectors`
+
+Single source of truth linking irrigation sectors across both data sources:
+
+| Column | Description |
+|--------|-------------|
+| `id` | Primary key |
+| `field` | Farm name (ZUÑIGA / ISLA DE MAIPO) |
+| `farm_id` | Wiseconn farm ID — `14245` = Zuñiga, `60544` = Isla de Maipo |
+| `irrigation_sector` | Sector name as it appears in Wiseconn (`wc_farms_zones.name`) |
+| `wc_zone_id` | FK to `wc_farms_zones.id` — direct join to all Wiseconn data |
+| `orchard` | Cuartel name (variety + year + CC code, e.g. `CEREZOS LAPINS 2014 CC-881`) |
+| `crop_type` | `CEREZOS` or `CIRUELOS` |
+| `ubibot_channel_ids` | `INTEGER[]` — array of Ubibot `channel_id`s monitoring this sector. Join with `ubi_channel_data` or `ubi_channel_summary` using `= ANY(ubibot_channel_ids)` |
+
+Example joins:
+```sql
+-- Wiseconn sensor data for a sector
+SELECT s.* FROM wc_zones_sensors s
+JOIN field_sectors fs ON s.zone_id::float::int = fs.wc_zone_id
+WHERE fs.orchard = 'CEREZOS LAPINS 2014 CC-881';
+
+-- Ubibot readings for a sector
+SELECT u.* FROM ubi_channel_summary u
+JOIN field_sectors fs ON u.channel_id = ANY(fs.ubibot_channel_ids)
+WHERE fs.irrigation_sector = 'Sector 2 EQ 2 (Lap14)';
+```
+
+**Pending mappings** (no Ubibot channel identified — confirm with field team):
+- ZUÑIGA / Sector 3 EQ 3 (Lap19) / CEREZOS LAPINS 2019 CC-891
+- ZUÑIGA / Sector 4 EQ 1 (Cer 24) / CEREZOS GLOW
+- ISLA DE MAIPO / S1 EQ1 (Tul) / CIRUELAS TULARE CC-450
+- ISLA DE MAIPO / S4 EQ2 / CIRUELAS TULARE CC-450
+
+**Ubibot channels not yet assigned to any sector** (confirm with field team):
+- `88158` T-Peonias, `88155` T-Peonias Sin Malla, `88251` T-Peonías Ensayo 3, `88259` T-Pimentónes Macro Tunel, `88271` T-Túnel Peonías Ensayo 1
+- `89019` Z-IVU 115 2018, `71208` Z-Kiwi
+
 ## Database Views
 
-`v_evapo_diario` — pre-built view for evapotranspiration reporting (Looker Studio). Joins `wc_zones_sensors` + `wc_farms_zones`, returns `predio`, `sector`, `cultivo`, `sensor` (Et0/Etc), `fecha`, `valor_mm` (MAX per day).
+`v_evapo_diario` — evapotranspiration per day. Joins `wc_zones_sensors` + `wc_farms_zones`, returns `predio`, `sector`, `cultivo`, `sensor` (Et0/Etc), `fecha`, `valor_mm` (MAX per day). Note: `zone_id` in `wc_zones_sensors` is stored as varchar with `.0` suffix (e.g. `"114940.0"`), so the JOIN uses `CAST(CAST(zone_id AS float) AS integer)`.
+
+`v_kc_diario` — Kc report per cuartel per day. Joins `wc_farms_realirrigation` + `wc_farms_zones` + `v_evapo_diario`. Et0 is averaged across all EMAs per predio (Zuñiga has 2 EMAs). Columns: `cuartel`, `predio`, `fecha`, `regado_mm`, `evapo_mm`, `kc`.
+
+## Production DB Access
+
+Credentials live in GCP Secret Manager (never hardcode them). To connect with psql:
+
+```bash
+# Get DATABASE_URL from Secret Manager
+DB_URL=$(gcloud secrets versions access latest --secret="DATABASE_URL" --project=integraciones-484915)
+
+# Connect
+psql "$DB_URL"
+```
+
+Cloud SQL instance: `db-donar` (PostgreSQL 16, `southamerica-west1`). GCP account: `gestion@empresasdonar.cl`.
 
 ## Active Farms
 
