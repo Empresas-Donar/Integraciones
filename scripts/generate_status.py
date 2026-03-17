@@ -18,8 +18,12 @@ DB_URL = os.environ["DATABASE_URL"]
 
 # Expected values for health checks
 EXPECTED_EXECUTIONS_PER_DAY = 24
-EXPECTED_UBIBOT_CHANNELS = 22   # channels assigned to field_sectors
-EXPECTED_WC_FARMS = 2           # Zuñiga + Isla de Maipo
+# Ubibot: 18 channels assigned in field_sectors but only ~9 report consistently.
+# Historical max = 18, average = 11. Thresholds based on real observed activity.
+UBIBOT_GREEN_THRESHOLD = 10   # >= 10 channels = healthy
+UBIBOT_YELLOW_THRESHOLD = 5   # 5-9 channels = degraded
+# below 5 = 🔴
+EXPECTED_WC_FARMS = 2         # Zuñiga + Isla de Maipo
 
 
 def connect():
@@ -99,9 +103,9 @@ def day_status(exec_data, et0_data, ubi_data, d):
         wc_rate == 1.0
         and ubi_rate == 1.0
         and et0_farms >= EXPECTED_WC_FARMS
-        and ubi_channels >= EXPECTED_UBIBOT_CHANNELS * 0.8
+        and ubi_channels >= UBIBOT_GREEN_THRESHOLD
     )
-    total_fail = wc_rate == 0 and ubi_rate == 0
+    total_fail = wc_rate == 0 and ubi_rate == 0 and ubi_channels == 0
 
     if total_fail:
         return "🔴"
@@ -146,9 +150,9 @@ def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_
 
         # Ubibot status
         ubi_ch = ubi_data.get(d, 0)
-        if ubi_rate == 1.0 and ubi_ch >= EXPECTED_UBIBOT_CHANNELS * 0.8:
+        if ubi_rate == 1.0 and ubi_ch >= UBIBOT_GREEN_THRESHOLD:
             ubi_icon = "🟢"
-        elif ubi_rate == 0 or ubi_ch == 0:
+        elif ubi_ch < UBIBOT_YELLOW_THRESHOLD:
             ubi_icon = "🔴"
         else:
             ubi_icon = "🟡"
