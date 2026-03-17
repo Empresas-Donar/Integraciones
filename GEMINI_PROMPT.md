@@ -1,10 +1,24 @@
-# System Prompt — Asistente de Datos Agrícolas Donar
+# Asistente de Datos Agrícolas — Empresas Donar
 
-Este archivo contiene el system prompt para configurar Gemini como asistente de consultas agrícolas para Empresas Donar. Está pensado para ser usado como contexto base en la integración con la API de Gemini.
+Este documento describe qué es el asistente, qué datos maneja y cómo usarlo. También contiene el contexto base que se le entrega al modelo de IA (Gemini) para que entienda el dominio agrícola de Donar.
 
 ---
 
-## System Prompt
+## ¿Qué es este asistente?
+
+Un asistente de inteligencia artificial entrenado con los datos de riego y sensores de los predios de Empresas Donar. Permite hacer preguntas en lenguaje natural — como si hablaras con un colega — y obtener respuestas basadas en los datos reales del sistema.
+
+**Ejemplos de preguntas que puede responder:**
+- "¿Cuánto se regó en Lapins 2014 esta semana?"
+- "¿Cuál es el Kc de Santina 2019 en los últimos 7 días?"
+- "¿Cómo está la humedad del suelo en Zuñiga?"
+- "¿Cuál fue la temperatura mínima ayer en Isla de Maipo?"
+- "¿Qué sectores no se regaron hoy?"
+- "¿Cuántas horas frío lleva acumuladas Zuñiga esta temporada?"
+
+---
+
+## Contexto base del asistente
 
 ```
 Eres un asistente agrícola especializado en los predios de Empresas Donar. Tu rol es responder preguntas sobre riego, sensores ambientales, evapotranspiración y estado de los cultivos en lenguaje natural, claro y directo.
@@ -123,32 +137,11 @@ Acumulado de calor desde la brotación (base 10°C). Indica el avance fenológic
 
 ---
 
-## Notas de implementación
+## ¿Qué puede y qué no puede hacer?
 
-Este prompt debe ir en el campo `system_instruction` al inicializar el modelo Gemini. Los datos reales de la consulta del usuario se entregan en cada turno de conversación como contexto adicional (JSON con los resultados de la DB).
-
-### Ejemplo de flujo (paso 1 — solo el prompt):
-
-```python
-import google.generativeai as genai
-
-genai.configure(api_key="TU_API_KEY")
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
-    system_instruction=SYSTEM_PROMPT  # contenido del bloque de arriba
-)
-
-chat = model.start_chat()
-respuesta = chat.send_message("¿Cuánto se regó en Lapins 2014 esta semana?")
-print(respuesta.text)
-```
-
-### Próximo paso: function calling
-
-En la siguiente fase, Gemini recibirá herramientas (functions) para consultar la DB directamente:
-- `get_irrigation_data(orchard, fecha_desde, fecha_hasta)` → datos de riego real
-- `get_kc(orchard, fecha_desde, fecha_hasta)` → Kc diario
-- `get_soil_moisture(orchard, fecha_desde, fecha_hasta)` → humedad de suelo Ubibot
-- `get_ambient_temperature(orchard, fecha_desde, fecha_hasta)` → temperatura ambiente
-- `get_et0(field, fecha_desde, fecha_hasta)` → Et0 de las EMAs
+| Puede | No puede |
+|-------|----------|
+| Responder sobre riego, Kc, Et0, temperatura, humedad de suelo | Controlar o modificar el riego |
+| Comparar períodos o cuarteles | Acceder a datos fuera del rango disponible (antes de dic 2023) |
+| Identificar cuarteles por nombre parcial ("Lapins 14", "Santina 2019") | Hacer recomendaciones agronómicas definitivas |
+| Responder en español o inglés | Acceder a internet o datos externos |
