@@ -66,6 +66,17 @@ def fetch_ubibot_channels_per_day(cur):
     return {r[0]: r[1] for r in cur.fetchall()}
 
 
+def fetch_ubibot_avg_temp_per_day(cur):
+    """Average temperature reported by Ubibot sensors per day."""
+    cur.execute("""
+        SELECT date, ROUND(AVG(avg)::numeric, 1) AS temp_avg
+        FROM ubi_channels_fields
+        WHERE name = 'Temperature'
+        GROUP BY date
+    """)
+    return {r[0]: float(r[1]) for r in cur.fetchall()}
+
+
 def fetch_irrigation_days(cur):
     """Days with at least one irrigation event per farm."""
     cur.execute("""
@@ -114,7 +125,7 @@ def day_status(exec_data, et0_data, ubi_data, d):
     return "🟡"
 
 
-def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_data):
+def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_data, temp_data):
     from calendar import monthrange
     _, days_in_month = monthrange(year, month)
     month_names = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -162,9 +173,13 @@ def build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_
         zuniga_icon = "💧" if 14245 in irr else "—"
         imaipo_icon = "💧" if 60544 in irr else "—"
 
+        # Ubibot avg temperature
+        temp = temp_data.get(d)
+        temp_str = f" `{temp}°C`" if temp is not None else ""
+
         lines.append(
             f"| {day:02d} | {overall} | {wc_icon} `{e['wc_ok']}/{e['total']}` "
-            f"| {ubi_icon} `{ubi_ch} canales` "
+            f"| {ubi_icon} `{ubi_ch} canales`{temp_str} "
             f"| {zuniga_icon} | {imaipo_icon} |"
         )
 
@@ -179,6 +194,7 @@ def generate_status_md():
     et0_data = fetch_wc_et0_days(cur)
     ubi_data = fetch_ubibot_channels_per_day(cur)
     irr_data = fetch_irrigation_days(cur)
+    temp_data = fetch_ubibot_avg_temp_per_day(cur)
 
     conn.close()
 
@@ -248,7 +264,7 @@ def generate_status_md():
 
     # Build months in reverse (most recent first)
     for year, month in reversed(months):
-        table = build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_data)
+        table = build_month_table(year, month, all_days, exec_data, et0_data, ubi_data, irr_data, temp_data)
         lines.append(table)
         lines.append("")
 
