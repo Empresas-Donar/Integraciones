@@ -384,7 +384,13 @@ def manage_fields_ubi(df, batch_size=2000):
 
     insert_statement = """
     INSERT INTO ubi_channels_fields (created_at, channel_id, name, avg, count, min, max, date, hour, summary_id)
-    VALUES (:created_at, :channel_id, :name, :avg, :count, :min, :max, :date, :hour, :summary_id);
+    VALUES (:created_at, :channel_id, :name, :avg, :count, :min, :max, :date, :hour, :summary_id)
+    ON CONFLICT (created_at, channel_id, name) DO UPDATE
+        SET avg = EXCLUDED.avg,
+            count = EXCLUDED.count,
+            min = EXCLUDED.min,
+            max = EXCLUDED.max,
+            summary_id = EXCLUDED.summary_id;
     """
 
     update_statement = """
