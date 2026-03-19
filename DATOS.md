@@ -41,7 +41,8 @@ field_sectors  (tabla maestra — conecta todo)
      └── ubibot_channel_ids ──▶ ubi_channel_data         (catálogo de dispositivos)
                                       │
                                       ├──▶ ubi_channel_summary     (cabecera horaria por dispositivo)
-                                      └──▶ ubi_channels_fields     (lecturas por sensor)
+                                      ├──▶ ubi_channels_fields     (lecturas por sensor)
+                                      └──▶ ubi_sensor_pivot        (pivot para reportes — 20 sensores como columnas)
 
 execution_log  (registro de cada ejecución del sistema)
 ```
@@ -366,15 +367,219 @@ SELECT * FROM f_ambient_temperature('2026-03-01', '2026-03-17', ARRAY['Z-Santina
 
 ---
 
+---
+
+## Tablas de reportería precalculadas
+
+Todas estas tablas siguen el mismo patrón:
+- Se actualizan automáticamente al final de cada sync exitoso mediante funciones `refresh_*()`.
+- Procesan solo los **últimos 2 días** con upsert (`ON CONFLICT DO UPDATE`).
+- Incluyen `field_sector_id` (FK a `field_sectors.id`) para facilitar joins directos sin pasar por arrays.
+- El backfill histórico cubre desde el origen de los datos disponibles.
+
+---
+
+### `ubi_sensor_pivot` — Pivot de sensores por hora
+
+**Propósito:** Tabla precalculada orientada a reportes. Transforma `ubi_channels_fields` de formato largo (una fila por sensor) a formato ancho (una fila por dispositivo por hora, con cada sensor como columna). Incluye directamente los datos de `field_sectors` (campo, sector, cuartel) para evitar joins adicionales al consultar.
+
+Se actualiza automáticamente al final de cada ejecución del pipeline mediante la función `refresh_ubi_sensor_pivot()`, que procesa solo los últimos 2 días con upsert.
+
+**Registros:** ~208.000 | **Rango:** may 2024 → hoy
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `field` | varchar | Campo: `ZUÑIGA` o `ISLA DE MAIPO` |
+| `irrigation_sector` | varchar | Nombre del sector de riego |
+| `orchard` | varchar | Nombre del cuartel |
+| `crop_type` | varchar | `CEREZOS` o `CIRUELOS` |
+| `date` | date | Fecha de la lectura |
+| `hour` | time | Hora de la lectura |
+| `voltage` | numeric | Voltaje del dispositivo (V) |
+| `light` | numeric | Luz (lux) |
+| `humidity` | numeric | Humedad ambiente (%) |
+| `temperature` | numeric | Temperatura ambiente (°C) |
+| `gsm_rssi` | numeric | Señal GSM (dBm) |
+| `wifi_rssi` | numeric | Señal WiFi (dBm) |
+| `temperatura_suelo_25cm` | numeric | Temperatura del suelo a 25 cm (°C) |
+| `temperatura_suelo_50cm` | numeric | Temperatura del suelo a 50 cm (°C) |
+| `humedad_suelo_25cm` | numeric | Humedad del suelo a 25 cm (%) |
+| `humedad_suelo_50cm` | numeric | Humedad del suelo a 50 cm (%) |
+| `rs485_soil_moisture` | numeric | Humedad de suelo vía RS485 (%) |
+| `rs485_soil_temperature` | numeric | Temperatura de suelo vía RS485 (°C) |
+| `rs485_humidity` | numeric | Humedad ambiente vía RS485 (%) |
+| `rs485_temperature` | numeric | Temperatura ambiente vía RS485 (°C) |
+| `carbon_dioxide` | numeric | CO₂ (ppm) |
+| `external_light` | numeric | Luz exterior vía sensor externo (lux) |
+| `pt100_temperature` | numeric | Temperatura vía sonda PT100 (°C) |
+| `rs485_atmospheric_pressure` | numeric | Presión atmosférica vía RS485 (hPa) |
+| `wind_speed` | numeric | Velocidad del viento (m/s) |
+| `carbon_dioxide_c1` | numeric | CO₂ canal 1 (ppm) |
+
+> **NULLs esperados:** Cada dispositivo solo tiene instalados los sensores físicos que le corresponden. Una columna NULL simplemente indica que ese dispositivo no tiene ese sensor — no es un error de datos.
+
+**Restricción única:** `(channel_id, orchard, date, hour)` — un registro por dispositivo, cuartel y hora.
+
+**Ejemplo de uso:**
+```sql
+-- Temperatura y humedad del último mes para Isla de Maipo
+SELECT date, hour, irrigation_sector, orchard, temperature, humidity,
+       humedad_suelo_25cm, humedad_suelo_50cm
+FROM ubi_sensor_pivot
+WHERE field = 'ISLA DE MAIPO'
+  AND date >= CURRENT_DATE - 30
+ORDER BY date DESC, hour DESC;
+```
+
+---
+
+### `wc_kc_daily` — Kc diario por sector
+
+**Propósito:** Tabla precalculada con el coeficiente de cultivo (Kc) diario por sector de riego. Combina `wc_farms_realirrigation` (riego ejecutado) con `wc_zones_sensors` (Et0) y `field_sectors`. Reemplaza a la función `f_kc()` como fuente de datos — la función ahora lee de esta tabla.
+
+Se actualiza con `refresh_wc_kc_daily()` tras cada sync exitoso de Wiseconn.
+
+**Registros:** ~4.900 | **Rango:** oct 2024 → hoy
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `date` | date | Fecha |
+| `field` | text | Campo: `ZUÑIGA` o `ISLA DE MAIPO` |
+| `irrigation_sector` | text | Nombre del sector de riego |
+| `orchard` | text | Nombre del cuartel |
+| `crop_type` | text | `CEREZOS` o `CIRUELOS` |
+| `irrigated_mm` | numeric | Milímetros de riego aplicados ese día |
+| `et0_mm` | numeric | Et0 promedio del campo ese día (promedio de todas las EMAs) |
+| `kc` | numeric | `irrigated_mm ÷ et0_mm` |
+
+**Restricción única:** `(date, field, irrigation_sector, orchard)` — necesaria porque algunos orchards tienen múltiples sectores de riego (ej: CIRUELOS ADULTOS CC-860 tiene 3 sectores en Zuñiga).
+
+> **Nota:** Solo hay filas para días con riego registrado en `wc_farms_realirrigation`. Días sin riego no aparecen en la tabla (Kc implícito = 0).
+
+**Ejemplo de uso:**
+```sql
+-- Kc semanal por cuartel
+SELECT date, field, orchard, irrigated_mm, et0_mm, kc
+FROM wc_kc_daily
+WHERE date BETWEEN '2026-03-01' AND '2026-03-18'
+ORDER BY date, field, orchard;
+
+-- O usando la función (equivalente, incluye filtros opcionales)
+SELECT * FROM f_kc('2026-03-01', '2026-03-18', ARRAY['ZUÑIGA']);
+```
+
+---
+
+### `ubi_ambient_temperature` — Temperatura ambiente horaria
+
+**Propósito:** Temperatura ambiente horaria por sector, con relación directa a `field_sectors`. Fuente de la función `f_ambient_temperature()`. Excluye sensores de túnel (prefijo `T-`).
+
+Se actualiza con `refresh_ubi_ambient_temperature()` tras cada sync exitoso de Ubibot.
+
+**Registros:** ~208.000 | **Rango:** may 2024 → hoy
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `channel_name` | varchar | Nombre del dispositivo |
+| `field` | text | Campo |
+| `irrigation_sector` | text | Sector de riego |
+| `orchard` | text | Cuartel |
+| `crop_type` | text | Tipo de cultivo |
+| `date` | date | Fecha |
+| `hour` | time | Hora |
+| `temp_avg` | numeric | Temperatura promedio de la hora (°C) |
+| `temp_min` | numeric | Temperatura mínima de la hora (°C) |
+| `temp_max` | numeric | Temperatura máxima de la hora (°C) |
+
+**Restricción única:** `(channel_id, orchard, date, hour)`
+
+---
+
+### `ubi_soil_humidity` — Humedad del suelo horaria
+
+**Propósito:** Humedad del suelo horaria por sector, capturando todas las profundidades disponibles como columnas separadas. Los valores son el AVG de lecturas de esa hora.
+
+Se actualiza con `refresh_ubi_soil_humidity()` tras cada sync exitoso de Ubibot.
+
+**Registros:** ~204.000 | **Rango:** may 2024 → hoy
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `channel_name` | varchar | Nombre del dispositivo |
+| `field` / `irrigation_sector` / `orchard` / `crop_type` | text | Datos del sector |
+| `date` | date | Fecha |
+| `hour` | time | Hora |
+| `hum_10cm` | numeric | Humedad del suelo a 10 cm (%) |
+| `hum_15cm` | numeric | Humedad del suelo a 15 cm (%) |
+| `hum_20cm` | numeric | Humedad del suelo a 20 cm (%) |
+| `hum_25cm` | numeric | Humedad del suelo a 25 cm (%) |
+| `hum_30cm` | numeric | Humedad del suelo a 30 cm (%) |
+| `hum_40cm` | numeric | Humedad del suelo a 40 cm (%) |
+| `hum_50cm` | numeric | Humedad del suelo a 50 cm (%) |
+| `hum_rs485` | numeric | Humedad del suelo vía RS485 (%) |
+
+**Restricción única:** `(channel_id, orchard, date, hour)`
+
+> **Observación de calidad de datos:** La mayoría de sensores de humedad de suelo en Zuñiga reportan `0` constantemente — posible falla de hardware o sensor desconectado. Solo el canal `88252` (S2 EQ2, Isla de Maipo) tiene datos válidos activos con valores en el rango esperado (25–50%). Confirmar estado de sensores con equipo de terreno.
+>
+> El canal `89019` (Z-IVU 115 2018, Zuñiga) tiene datos de humedad de suelo válidos pero **no está asignado a ningún sector** en `field_sectors`, por lo que no aparece en esta tabla.
+
+---
+
+### `ubi_soil_temperature` — Temperatura del suelo horaria
+
+**Propósito:** Temperatura del suelo horaria por sector a distintas profundidades. Los valores son el AVG de lecturas de esa hora.
+
+Se actualiza con `refresh_ubi_soil_temperature()` tras cada sync exitoso de Ubibot.
+
+**Registros:** ~204.000 | **Rango:** may 2024 → hoy
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `channel_name` | varchar | Nombre del dispositivo |
+| `field` / `irrigation_sector` / `orchard` / `crop_type` | text | Datos del sector |
+| `date` | date | Fecha |
+| `hour` | time | Hora |
+| `temp_25cm` | numeric | Temperatura del suelo a 25 cm (°C) |
+| `temp_50cm` | numeric | Temperatura del suelo a 50 cm (°C) |
+| `temp_rs485` | numeric | Temperatura del suelo vía RS485 (°C) |
+
+**Restricción única:** `(channel_id, orchard, date, hour)`
+
+> **Observación de calidad de datos — sensor defectuoso:**
+> El sensor `temp_25cm` del canal `88252` (S2 EQ2, Isla de Maipo) reporta valores entre **60–86°C**, lo cual es físicamente imposible para temperatura de suelo. El sensor a 25 cm está fallando — probable desconexión física, cortocircuito en la sonda, o calibración perdida. **No usar `temp_25cm` de este canal para reportes hasta que sea revisado por el equipo de terreno.**
+>
+> El sensor `temp_50cm` del mismo canal reporta valores válidos (22–23°C). Los sensores de Zuñiga reportan `0` (misma situación que humedad de suelo).
+
+---
+
 ## Resumen de volumen de datos
 
 | Tabla | Registros | Rango disponible |
 |-------|-----------|-----------------|
 | `ubi_channels_fields` | ~2.530.000 | may 2024 → hoy |
 | `ubi_channel_summary` | ~280.000 | may 2024 → hoy |
+| `ubi_sensor_pivot` | ~208.000 | may 2024 → hoy |
+| `ubi_ambient_temperature` | ~208.000 | may 2024 → hoy |
+| `ubi_soil_humidity` | ~204.000 | may 2024 → hoy |
+| `ubi_soil_temperature` | ~204.000 | may 2024 → hoy |
 | `wc_zones_sensors` | ~313.000 | ago 2024 → hoy |
 | `wc_farms_realirrigation` | ~6.700 | dic 2023 → hoy |
 | `wc_farms_irrigation` | ~6.200 | dic 2023 → hoy |
+| `wc_kc_daily` | ~4.900 | oct 2024 → hoy |
 | `execution_log` | ~12.500 | jun 2024 → hoy |
 | `field_sectors` | 22 | — |
 | `wc_farms_zones` | 24 | — |

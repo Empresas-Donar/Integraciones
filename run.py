@@ -71,8 +71,16 @@ def main():
             final_df = create_final_dataframe(channel_mapping, raw_df_summary)
             manage_fields_ubi(final_df)
             db.session.execute(db.text("SELECT refresh_ubi_sensor_pivot()"))
+            db.session.execute(db.text("SELECT refresh_ubi_ambient_temperature()"))
+            db.session.execute(db.text("SELECT refresh_ubi_soil_humidity()"))
+            db.session.execute(db.text("SELECT refresh_ubi_soil_temperature()"))
             db.session.commit()
-            logging.info("ubi_sensor_pivot refreshed")
+            logging.info("ubi_sensor_pivot, ubi_ambient_temperature, ubi_soil_humidity and ubi_soil_temperature refreshed")
+
+        if status_wiseconn and status_wiseconn.startswith("Success"):
+            db.session.execute(db.text("SELECT refresh_wc_kc_daily()"))
+            db.session.commit()
+            logging.info("wc_kc_daily refreshed")
 
         # Always log execution status
         log = ExecutionLog(
