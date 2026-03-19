@@ -20,6 +20,20 @@ def scheduled_sendgrid_job():
     if result.stderr:
         logging.error(f"Errores de daily_channel_report.py: {result.stderr}")
 
+def scheduled_weekly_report():
+    logging.info("Ejecutando reporte semanal de sensores...")
+    result = subprocess.run(["python3", "sensor_status_report.py", "--period", "weekly"], capture_output=True, text=True)
+    logging.info(f"Salida reporte semanal: {result.stdout}")
+    if result.stderr:
+        logging.error(f"Errores reporte semanal: {result.stderr}")
+
+def scheduled_monthly_report():
+    logging.info("Ejecutando reporte mensual de sensores...")
+    result = subprocess.run(["python3", "sensor_status_report.py", "--period", "monthly"], capture_output=True, text=True)
+    logging.info(f"Salida reporte mensual: {result.stdout}")
+    if result.stderr:
+        logging.error(f"Errores reporte mensual: {result.stderr}")
+
 scheduler = BackgroundScheduler()
 
 def add_jobs(scheduler, job_function, times):
@@ -32,6 +46,8 @@ sendgrid_times = [(7, '20')]
 def schedule_tasks():
     add_jobs(scheduler, scheduled_job, scheduled_times)
     add_jobs(scheduler, scheduled_sendgrid_job, sendgrid_times)
+    scheduler.add_job(scheduled_weekly_report, 'cron', day_of_week='mon', hour=8, minute=0)
+    scheduler.add_job(scheduled_monthly_report, 'cron', day=1, hour=8, minute=0)
 
 if __name__ == "__main__":
     print("Programando tareas...", flush=True)
