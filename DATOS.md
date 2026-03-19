@@ -566,6 +566,97 @@ Se actualiza con `refresh_ubi_soil_temperature()` tras cada sync exitoso de Ubib
 
 ---
 
+### `ubi_chill_hours` — Horas frío por sector y temporada
+
+**Propósito:** Calcula y acumula las horas frío hora a hora por sector, usando dos modelos estándar de la industria frutícola. Permite generar el reporte de HF acumuladas por temporada (equivalente a la planilla "Horas Frío IVU") directamente desde la base de datos.
+
+Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
+
+**Registros:** ~243.000 | **Temporadas:** 2024-2025, 2025-2026
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `channel_name` | varchar | Nombre del dispositivo |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `field` | text | Campo |
+| `irrigation_sector` | text | Sector de riego |
+| `orchard` | text | Cuartel |
+| `crop_type` | text | Tipo de cultivo |
+| `date` | date | Fecha |
+| `hour` | time | Hora |
+| `temperature` | numeric | Temperatura ambiente (°C) |
+| `hf_value` | smallint | **Modelo Utah simplificado:** `1` si temp ≤ 7.2°C, `0` si no |
+| `hf_accumulated` | integer | HF acumuladas desde el 1 de mayo de la temporada |
+| `utah_value` | numeric | **Modelo Utah completo:** peso según rango de temperatura |
+| `utah_accumulated` | numeric | Utah acumulado desde el 1 de mayo de la temporada |
+| `season` | varchar | Temporada: `2024-2025` o `2025-2026` |
+| `rn` | integer | Número de fila dentro de la partición (uso interno) |
+
+**Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora. Un canal que cubre múltiples sectores genera una fila por sector.
+
+#### Modelo Utah simplificado
+
+Cada hora con temperatura ≤ 7.2°C suma 1 HF. Simple y ampliamente usado en Chile.
+
+#### Modelo Utah completo (pesos por rango)
+
+Más preciso — el frío óptimo está entre 2.5–9.1°C. El calor resta horas acumuladas:
+
+| Rango °C | Peso |
+|----------|------|
+| ≤ 1.4 | 0 — demasiado frío |
+| 1.5 – 2.4 | +0.5 |
+| 2.5 – 9.1 | **+1** — zona óptima |
+| 9.2 – 12.4 | +0.5 |
+| 12.5 – 15.9 | 0 |
+| 16.0 – 18.0 | -0.5 |
+| > 18.0 | **-1** — el calor deshace frío acumulado |
+
+#### Ejemplo de uso
+
+```sql
+-- HF acumuladas al día de hoy por sector, temporada actual
+SELECT irrigation_sector, orchard, MAX(hf_accumulated) AS hf_hoy, MAX(utah_accumulated) AS utah_hoy
+FROM ubi_chill_hours
+WHERE season = '2025-2026'
+GROUP BY irrigation_sector, orchard
+ORDER BY hf_hoy DESC;
+
+-- Curva diaria de acumulación (para gráfico)
+SELECT date, MAX(hf_accumulated) AS hf_acum, MAX(utah_accumulated) AS utah_acum
+FROM ubi_chill_hours
+WHERE field_sector_id = 13 AND season = '2025-2026'
+GROUP BY date ORDER BY date;
+```
+
+#### Totales por temporada (referencia)
+
+| Sensor | Temporada | Inicio datos | HF total | Utah total | Confiable |
+|--------|-----------|-------------|----------|------------|-----------|
+| Sector 1 EQ 3 (San19s) | 2024-2025 | 01/05/2024 | 1.321 | 748 | ✅ |
+| Sector 3 EQ 2 (Rai15) | 2024-2025 | 10/05/2024 | 1.417 | 877 | ✅ |
+| Sector 1 EQ 2 (San14) | 2024-2025 | 02/05/2024 | 1.227 | 429 | ✅ |
+| S2 EQ2 | 2024-2025 | 29/07/2024 | 347 | — | ⚠️ parcial |
+| S2 EQ1 | 2024-2025 | 06/08/2024 | 221 | — | ⚠️ parcial |
+| Sector 1 EQ 1 (Dag) | 2025-2026 | 01/05/2025 | 1.336 | 1.113 | ✅ |
+| Sector 3 EQ 2 (Rai15) | 2025-2026 | 01/05/2025 | 1.275 | 904 | ✅ |
+| S2 EQ1 | 2025-2026 | 01/05/2025 | 1.196 | 1.046 | ✅ |
+| S2 EQ2 | 2025-2026 | 01/05/2025 | 1.099 | 864 | ✅ |
+
+#### Observaciones de calidad de datos
+
+> **`utah_accumulated` — confiabilidad según temporada:**
+>
+> - **Temporada 2025-2026:** todos los sensores tienen datos desde el 1 de mayo 2025 → `utah_accumulated` es **confiable**.
+> - **Temporada 2024-2025 — Zuñiga** (Sector 1 EQ 2, Sector 1 EQ 3, Sector 3 EQ 2): datos desde mayo 2024 → `utah_accumulated` **confiable**.
+> - **Temporada 2024-2025 — Isla de Maipo** (S2 EQ1, S2 EQ2, S3 EQ1, S3 EQ2) y varios de Zuñiga: datos desde **julio-agosto 2024**, no desde mayo → `utah_accumulated` **no confiable** para esa temporada (arroja valores negativos por el verano siguiente que resta sin haber acumulado el invierno completo). Usar solo `hf_accumulated` para esos casos.
+>
+> **`hf_accumulated` es siempre confiable** — nunca es negativo, solo refleja las horas efectivamente observadas desde el primer dato disponible.
+
+---
+
 ## Resumen de volumen de datos
 
 | Tabla | Registros | Rango disponible |
@@ -580,6 +671,7 @@ Se actualiza con `refresh_ubi_soil_temperature()` tras cada sync exitoso de Ubib
 | `wc_farms_realirrigation` | ~6.700 | dic 2023 → hoy |
 | `wc_farms_irrigation` | ~6.200 | dic 2023 → hoy |
 | `wc_kc_daily` | ~4.900 | oct 2024 → hoy |
+| `ubi_chill_hours` | ~243.000 | may 2024 → hoy |
 | `execution_log` | ~12.500 | jun 2024 → hoy |
 | `field_sectors` | 22 | — |
 | `wc_farms_zones` | 24 | — |

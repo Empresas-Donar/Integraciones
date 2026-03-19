@@ -74,8 +74,9 @@ def main():
             db.session.execute(db.text("SELECT refresh_ubi_ambient_temperature()"))
             db.session.execute(db.text("SELECT refresh_ubi_soil_humidity()"))
             db.session.execute(db.text("SELECT refresh_ubi_soil_temperature()"))
+            db.session.execute(db.text("SELECT refresh_ubi_chill_hours()"))
             db.session.commit()
-            logging.info("ubi_sensor_pivot, ubi_ambient_temperature, ubi_soil_humidity and ubi_soil_temperature refreshed")
+            logging.info("ubi_sensor_pivot, ubi_ambient_temperature, ubi_soil_humidity, ubi_soil_temperature and ubi_chill_hours refreshed")
 
         if status_wiseconn and status_wiseconn.startswith("Success"):
             db.session.execute(db.text("SELECT refresh_wc_kc_daily()"))
