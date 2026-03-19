@@ -70,6 +70,9 @@ def main():
             channel_mapping = create_channel_sensor_mapping(raw_data_ubi_channels)
             final_df = create_final_dataframe(channel_mapping, raw_df_summary)
             manage_fields_ubi(final_df)
+            db.session.execute(db.text("SELECT refresh_ubi_sensor_pivot()"))
+            db.session.commit()
+            logging.info("ubi_sensor_pivot refreshed")
 
         # Always log execution status
         log = ExecutionLog(
