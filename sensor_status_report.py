@@ -8,7 +8,7 @@ from app.mail_class import MailManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-ACTIVE_THRESHOLD_DAYS = 2
+ACTIVE_THRESHOLD_DAYS   = 2
 DEGRADED_THRESHOLD_DAYS = 7
 
 
@@ -45,7 +45,25 @@ def get_ubibot_status(session):
         GROUP BY cd.channel_id, cd.name
         ORDER BY days_since DESC NULLS FIRST
     """)).fetchall()
-    return classify(rows, "channel_id", "name")
+
+    active, degraded, down = [], [], []
+    for row in rows:
+        row = dict(row._mapping)
+        days = int(row["days_since"]) if row["days_since"] is not None else 9999
+        entry = {
+            "id":           row["channel_id"],
+            "name":         row["name"],
+            "last_reading": row["last_reading"],
+            "days_since":   days,
+            "field":        None,
+        }
+        if days == 0:
+            active.append(entry)
+        elif days <= DEGRADED_THRESHOLD_DAYS:
+            degraded.append(entry)
+        else:
+            down.append(entry)
+    return active, degraded, down
 
 
 def get_daily_summary(session, date_from, date_to):

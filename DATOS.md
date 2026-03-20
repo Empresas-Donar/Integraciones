@@ -502,45 +502,11 @@ Se actualiza con `refresh_ubi_ambient_temperature()` tras cada sync exitoso de U
 
 ---
 
-### `ubi_soil_humidity` — Humedad del suelo horaria
+### `ubi_soil_sensors` — Temperatura y humedad del suelo horaria
 
-**Propósito:** Humedad del suelo horaria por sector, capturando todas las profundidades disponibles como columnas separadas. Los valores son el AVG de lecturas de esa hora.
+**Propósito:** Tabla unificada con temperatura y humedad del suelo por sector y profundidad. Reemplaza las antiguas tablas `ubi_soil_humidity` y `ubi_soil_temperature` que fueron fusionadas al tener la misma estructura base. Los valores son el AVG de lecturas de esa hora.
 
-Se actualiza con `refresh_ubi_soil_humidity()` tras cada sync exitoso de Ubibot.
-
-**Registros:** ~204.000 | **Rango:** may 2024 → hoy
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | integer | Clave primaria |
-| `field_sector_id` | integer | FK a `field_sectors.id` |
-| `channel_id` | integer | ID del dispositivo Ubibot |
-| `channel_name` | varchar | Nombre del dispositivo |
-| `field` / `irrigation_sector` / `orchard` / `crop_type` | text | Datos del sector |
-| `date` | date | Fecha |
-| `hour` | time | Hora |
-| `hum_10cm` | numeric | Humedad del suelo a 10 cm (%) |
-| `hum_15cm` | numeric | Humedad del suelo a 15 cm (%) |
-| `hum_20cm` | numeric | Humedad del suelo a 20 cm (%) |
-| `hum_25cm` | numeric | Humedad del suelo a 25 cm (%) |
-| `hum_30cm` | numeric | Humedad del suelo a 30 cm (%) |
-| `hum_40cm` | numeric | Humedad del suelo a 40 cm (%) |
-| `hum_50cm` | numeric | Humedad del suelo a 50 cm (%) |
-| `hum_rs485` | numeric | Humedad del suelo vía RS485 (%) |
-
-**Restricción única:** `(channel_id, orchard, date, hour)`
-
-> **Observación de calidad de datos:** La mayoría de sensores de humedad de suelo en Zuñiga reportan `0` constantemente — posible falla de hardware o sensor desconectado. Solo el canal `88252` (S2 EQ2, Isla de Maipo) tiene datos válidos activos con valores en el rango esperado (25–50%). Confirmar estado de sensores con equipo de terreno.
->
-> El canal `89019` (Z-IVU 115 2018, Zuñiga) tiene datos de humedad de suelo válidos pero **no está asignado a ningún sector** en `field_sectors`, por lo que no aparece en esta tabla.
-
----
-
-### `ubi_soil_temperature` — Temperatura del suelo horaria
-
-**Propósito:** Temperatura del suelo horaria por sector a distintas profundidades. Los valores son el AVG de lecturas de esa hora.
-
-Se actualiza con `refresh_ubi_soil_temperature()` tras cada sync exitoso de Ubibot.
+Se actualiza con `refresh_ubi_soil_sensors()` tras cada sync exitoso de Ubibot.
 
 **Registros:** ~204.000 | **Rango:** may 2024 → hoy
 
@@ -556,13 +522,20 @@ Se actualiza con `refresh_ubi_soil_temperature()` tras cada sync exitoso de Ubib
 | `temp_25cm` | numeric | Temperatura del suelo a 25 cm (°C) |
 | `temp_50cm` | numeric | Temperatura del suelo a 50 cm (°C) |
 | `temp_rs485` | numeric | Temperatura del suelo vía RS485 (°C) |
+| `hum_10cm` | numeric | Humedad del suelo a 10 cm (%) |
+| `hum_15cm` | numeric | Humedad del suelo a 15 cm (%) |
+| `hum_20cm` | numeric | Humedad del suelo a 20 cm (%) |
+| `hum_25cm` | numeric | Humedad del suelo a 25 cm (%) |
+| `hum_30cm` | numeric | Humedad del suelo a 30 cm (%) |
+| `hum_40cm` | numeric | Humedad del suelo a 40 cm (%) |
+| `hum_50cm` | numeric | Humedad del suelo a 50 cm (%) |
+| `hum_rs485` | numeric | Humedad del suelo vía RS485 (%) |
 
 **Restricción única:** `(channel_id, orchard, date, hour)`
 
-> **Observación de calidad de datos — sensor defectuoso:**
-> El sensor `temp_25cm` del canal `88252` (S2 EQ2, Isla de Maipo) reporta valores entre **60–86°C**, lo cual es físicamente imposible para temperatura de suelo. El sensor a 25 cm está fallando — probable desconexión física, cortocircuito en la sonda, o calibración perdida. **No usar `temp_25cm` de este canal para reportes hasta que sea revisado por el equipo de terreno.**
+> **Observación — temperatura de suelo:** El sensor `temp_25cm` del canal `88252` (S2 EQ2, Isla de Maipo) reporta valores entre **60–86°C** — físicamente imposible. Sensor fallando (probable desconexión o cortocircuito). **No usar `temp_25cm` de este canal hasta revisión en terreno.** El `temp_50cm` del mismo canal es válido (22–23°C).
 >
-> El sensor `temp_50cm` del mismo canal reporta valores válidos (22–23°C). Los sensores de Zuñiga reportan `0` (misma situación que humedad de suelo).
+> **Observación — humedad de suelo:** La mayoría de sensores en Zuñiga reportan `0` constantemente. Solo el canal `88252` (S2 EQ2, Isla de Maipo) tiene datos válidos (25–50%). El canal `89019` (Z-IVU 115 2018) tiene datos válidos pero no está asignado a ningún sector en `field_sectors`.
 
 ---
 
@@ -589,12 +562,23 @@ Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 | `temperature` | numeric | Temperatura ambiente (°C) |
 | `hf_value` | smallint | **Modelo Utah simplificado:** `1` si temp ≤ 7.2°C, `0` si no |
 | `hf_accumulated` | integer | HF acumuladas desde el 1 de mayo de la temporada |
-| `utah_value` | numeric | **Modelo Utah completo:** peso según rango de temperatura |
-| `utah_accumulated` | numeric | Utah acumulado desde el 1 de mayo de la temporada |
-| `season` | varchar | Temporada: `2024-2025` o `2025-2026` |
+| `utah_value` | numeric | **Porciones frío (modelo Utah completo):** peso según rango de temperatura |
+| `utah_accumulated` | numeric | Porciones frío acumuladas desde el 1 de mayo. Nunca baja de 0 |
+| `season` | varchar | Temporada HF/Utah (mayo–abril): `2024-2025` o `2025-2026` |
+| `gda_value` | numeric | **Grados día acumulados:** `MAX(temp - 7, 0) / 24` — calor útil por hora (base 7°C) |
+| `gda_accumulated` | numeric | GDA acumulados desde el 1 de agosto de la temporada |
+| `gda_season` | varchar | Temporada GDA (agosto–julio): `2024-2025` o `2025-2026` |
 | `rn` | integer | Número de fila dentro de la partición (uso interno) |
 
 **Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora. Un canal que cubre múltiples sectores genera una fila por sector.
+
+#### Los tres modelos calculados
+
+| Modelo | Columnas | Período | Uso |
+|--------|----------|---------|-----|
+| **Horas Frío** | `hf_value`, `hf_accumulated` | 1 mayo → 30 abril | Simple, siempre confiable |
+| **Porciones Frío** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso, confiable desde 2025-2026 |
+| **Grados Día** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide acumulación de calor post-invierno |
 
 #### Modelo Utah simplificado
 
@@ -614,18 +598,40 @@ Más preciso — el frío óptimo está entre 2.5–9.1°C. El calor resta horas
 | 16.0 – 18.0 | -0.5 |
 | > 18.0 | **-1** — el calor deshace frío acumulado |
 
+#### Modelo Grados Día Acumulados (GDA)
+
+Métrica opuesta a las horas frío — mide el **calor acumulado** post-invierno. Relevante para estimar el avance fenológico (brotación, floración, madurez).
+
+- **Base:** 7°C (estándar Chile para cerezos/ciruelos)
+- **Fórmula por hora:** `MAX(temp - 7, 0) / 24`
+- **Período:** desde el **1 de agosto** de cada temporada
+
+```
+Hora a 25°C → GDA = (25-7)/24 = 0.75
+Hora a 10°C → GDA = (10-7)/24 = 0.125
+Hora a  5°C → GDA = 0  (bajo la base, no suma)
+```
+
+Valores de referencia para temporada 2024-2025 (agosto→abril): ~3.000–3.300 GDA en Zuñiga.
+
 #### Ejemplo de uso
 
 ```sql
--- HF acumuladas al día de hoy por sector, temporada actual
-SELECT irrigation_sector, orchard, MAX(hf_accumulated) AS hf_hoy, MAX(utah_accumulated) AS utah_hoy
+-- HF, porciones frío y GDA al día de hoy por sector
+SELECT irrigation_sector, orchard,
+    MAX(hf_accumulated)   AS hf_hoy,
+    MAX(utah_accumulated) AS porciones_frio_hoy,
+    MAX(gda_accumulated)  AS gda_hoy
 FROM ubi_chill_hours
 WHERE season = '2025-2026'
 GROUP BY irrigation_sector, orchard
 ORDER BY hf_hoy DESC;
 
 -- Curva diaria de acumulación (para gráfico)
-SELECT date, MAX(hf_accumulated) AS hf_acum, MAX(utah_accumulated) AS utah_acum
+SELECT date,
+    MAX(hf_accumulated)   AS hf_acum,
+    MAX(utah_accumulated) AS utah_acum,
+    MAX(gda_accumulated)  AS gda_acum
 FROM ubi_chill_hours
 WHERE field_sector_id = 13 AND season = '2025-2026'
 GROUP BY date ORDER BY date;
@@ -665,8 +671,7 @@ GROUP BY date ORDER BY date;
 | `ubi_channel_summary` | ~280.000 | may 2024 → hoy |
 | `ubi_sensor_pivot` | ~208.000 | may 2024 → hoy |
 | `ubi_ambient_temperature` | ~208.000 | may 2024 → hoy |
-| `ubi_soil_humidity` | ~204.000 | may 2024 → hoy |
-| `ubi_soil_temperature` | ~204.000 | may 2024 → hoy |
+| `ubi_soil_sensors` | ~204.000 | may 2024 → hoy |
 | `wc_zones_sensors` | ~313.000 | ago 2024 → hoy |
 | `wc_farms_realirrigation` | ~6.700 | dic 2023 → hoy |
 | `wc_farms_irrigation` | ~6.200 | dic 2023 → hoy |
