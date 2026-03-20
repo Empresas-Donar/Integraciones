@@ -307,68 +307,6 @@ GROUP BY semana ORDER BY semana DESC;
 
 ---
 
-## Funciones de reporte disponibles
-
-### `f_kc(p_fecha_desde, p_fecha_hasta, p_field[], p_orchard[])` — Coeficiente de cultivo
-
-Función principal de reportería. Combina `wc_farms_realirrigation` + `field_sectors` + `wc_zones_sensors` (Et0) para calcular el Kc diario por cuartel. El Et0 de Zuñiga es el promedio de las 2 EMAs.
-
-```sql
--- Todos los cuarteles
-SELECT * FROM f_kc('2026-03-01', '2026-03-17');
-
--- Solo Zuñiga
-SELECT * FROM f_kc('2026-03-01', '2026-03-17', ARRAY['ZUÑIGA']);
-
--- Un cuartel específico
-SELECT * FROM f_kc('2026-03-01', '2026-03-17', NULL, ARRAY['CEREZOS LAPINS 2014 CC-881']);
-```
-
-| Columna | Descripción |
-|---------|-------------|
-| `fecha` | Fecha |
-| `field` | Campo (ZUÑIGA / ISLA DE MAIPO) |
-| `orchard` | Nombre del cuartel |
-| `crop_type` | CEREZOS o CIRUELOS |
-| `irrigated_mm` | Milímetros de riego aplicados |
-| `et0_mm` | Et0 promedio del campo ese día |
-| `kc` | `irrigated_mm ÷ et0_mm` |
-
-| Kc | Interpretación |
-|----|----------------|
-| 0 (con Et0 > 0) | Sin riego ese día |
-| 0.7 – 1.1 | Rango normal en plena temporada |
-| > 1.5 | Posible sobreirrigación |
-| < 0.3 en temporada alta | Posible déficit hídrico |
-
----
-
-### `f_ambient_temperature(p_fecha_desde, p_fecha_hasta, p_canales[])` — Temperatura ambiente
-
-Lecturas horarias de temperatura de los sensores Ubibot. Excluye automáticamente sensores de túnel (prefijo `T-`).
-
-```sql
--- Todos los sensores
-SELECT * FROM f_ambient_temperature('2026-03-01', '2026-03-17');
-
--- Sensores específicos
-SELECT * FROM f_ambient_temperature('2026-03-01', '2026-03-17', ARRAY['Z-Santina 2014', 'Z-Lapins 2014']);
-```
-
-| Columna | Descripción |
-|---------|-------------|
-| `date` | Fecha |
-| `hour` | Hora |
-| `channel` | Nombre del dispositivo |
-| `channel_id` | ID del dispositivo |
-| `temp_avg` | Temperatura promedio (°C) |
-| `temp_min` | Temperatura mínima (°C) |
-| `temp_max` | Temperatura máxima (°C) |
-
----
-
----
-
 ## Tablas de reportería precalculadas
 
 Todas estas tablas siguen el mismo patrón:
@@ -437,7 +375,7 @@ ORDER BY date DESC, hour DESC;
 
 ### `wc_kc_daily` — Kc diario por sector
 
-**Propósito:** Tabla precalculada con el coeficiente de cultivo (Kc) diario por sector de riego. Combina `wc_farms_realirrigation` (riego ejecutado) con `wc_zones_sensors` (Et0) y `field_sectors`. Reemplaza a la función `f_kc()` como fuente de datos — la función ahora lee de esta tabla.
+**Propósito:** Tabla precalculada con el coeficiente de cultivo (Kc) diario por sector de riego. Combina `wc_farms_realirrigation` (riego ejecutado) con `wc_zones_sensors` (Et0) y `field_sectors`.
 
 Se actualiza con `refresh_wc_kc_daily()` tras cada sync exitoso de Wiseconn.
 
@@ -467,16 +405,13 @@ SELECT date, field, orchard, irrigated_mm, et0_mm, kc
 FROM wc_kc_daily
 WHERE date BETWEEN '2026-03-01' AND '2026-03-18'
 ORDER BY date, field, orchard;
-
--- O usando la función (equivalente, incluye filtros opcionales)
-SELECT * FROM f_kc('2026-03-01', '2026-03-18', ARRAY['ZUÑIGA']);
 ```
 
 ---
 
 ### `ubi_ambient_temperature` — Temperatura ambiente horaria
 
-**Propósito:** Temperatura ambiente horaria por sector, con relación directa a `field_sectors`. Fuente de la función `f_ambient_temperature()`. Excluye sensores de túnel (prefijo `T-`).
+**Propósito:** Temperatura ambiente horaria por sector, con relación directa a `field_sectors`. Excluye sensores de túnel (prefijo `T-`).
 
 Se actualiza con `refresh_ubi_ambient_temperature()` tras cada sync exitoso de Ubibot.
 
