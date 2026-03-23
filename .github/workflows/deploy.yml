@@ -83,21 +83,23 @@ jobs:
 
       - name: Create or Update Weekly Report Cloud Scheduler
         run: |
+          SCHEDULER_REGION="us-central1"
+          JOB_URI="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.WEEKLY_REPORT_JOB_NAME }}:run"
           if gcloud scheduler jobs describe integraciones-weekly-report \
-              --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }} &>/dev/null; then
+              --location=${SCHEDULER_REGION} --project=${{ env.PROJECT_ID }} &>/dev/null; then
             gcloud scheduler jobs update http integraciones-weekly-report \
-              --location=${{ env.REGION }} \
+              --location=${SCHEDULER_REGION} \
               --schedule="0 8 * * 1" \
               --time-zone="America/Santiago" \
-              --uri="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.WEEKLY_REPORT_JOB_NAME }}:run" \
+              --uri="${JOB_URI}" \
               --message-body="{}" \
               --oauth-service-account-email=${{ secrets.WIF_SERVICE_ACCOUNT }}
           else
             gcloud scheduler jobs create http integraciones-weekly-report \
-              --location=${{ env.REGION }} \
+              --location=${SCHEDULER_REGION} \
               --schedule="0 8 * * 1" \
               --time-zone="America/Santiago" \
-              --uri="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.WEEKLY_REPORT_JOB_NAME }}:run" \
+              --uri="${JOB_URI}" \
               --message-body="{}" \
               --oauth-service-account-email=${{ secrets.WIF_SERVICE_ACCOUNT }}
           fi
