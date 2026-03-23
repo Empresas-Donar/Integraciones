@@ -519,23 +519,41 @@ Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 | **Grados Día** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide acumulación de calor post-invierno |
 | **Modelo Dinámico** | `dm_state`, `dm_value`, `dm_accumulated` | 1 mayo → 30 abril | Más preciso que Utah, estándar internacional |
 
-#### Modelo Utah simplificado
+#### Modelo Horas Frío (HF) — el más simple
 
-Cada hora con temperatura ≤ 7.2°C suma 1 HF. Simple y ampliamente usado en Chile.
+Desarrollado en la década de 1950, es el más antiguo y fácil de entender. Parte de la observación empírica de que los frutales necesitan un número mínimo de horas bajo 7.2°C para salir correctamente del reposo invernal (dormancia).
 
-#### Modelo Utah completo (pesos por rango)
+**Lógica:** cada hora con temperatura ≤ 7.2°C suma 1 HF; cualquier hora sobre ese umbral suma 0. No distingue entre una hora a 1°C y una a 7°C — ambas cuentan igual. Tampoco penaliza el calor.
 
-Más preciso — el frío óptimo está entre 2.5–9.1°C. El calor resta horas acumuladas:
+**Cuándo usarlo:** referencia rápida, comparación entre temporadas, comunicación con el equipo de campo. Es el modelo que más se entiende intuitivamente.
 
-| Rango °C | Peso |
-|----------|------|
-| ≤ 1.4 | 0 — demasiado frío |
-| 1.5 – 2.4 | +0.5 |
-| 2.5 – 9.1 | **+1** — zona óptima |
-| 9.2 – 12.4 | +0.5 |
-| 12.5 – 15.9 | 0 |
-| 16.0 – 18.0 | -0.5 |
-| > 18.0 | **-1** — el calor deshace frío acumulado |
+**Limitación:** sobreestima la eficiencia del frío muy intenso (bajo 2°C) y no considera que el calor diurno puede revertir el efecto del frío nocturno.
+
+```
+hf_value = 1  si temperatura ≤ 7.2°C
+hf_value = 0  si temperatura > 7.2°C
+hf_accumulated = suma de hf_value desde el 1 de mayo
+```
+
+#### Modelo Utah (Porciones Frío) — intermedio
+
+Desarrollado por Richardson et al. (1974) en la Universidad de Utah, EE.UU. Mejora el modelo HF reconociendo que no todas las temperaturas frías son igual de efectivas, y que el calor puede **destruir** el frío ya acumulado.
+
+**Lógica:** asigna un peso diferente a cada rango de temperatura. El rango óptimo (2.5–9.1°C) suma 1 porción por hora. Temperaturas muy bajas o muy altas tienen peso reducido o negativo. Si durante el día la temperatura supera los 18°C, se restan porciones del acumulado.
+
+| Rango °C | Peso | Interpretación |
+|----------|------|----------------|
+| ≤ 1.4 | 0 | Demasiado frío — no es efectivo |
+| 1.5 – 2.4 | +0.5 | Frío leve |
+| 2.5 – 9.1 | **+1** | Zona óptima de vernalización |
+| 9.2 – 12.4 | +0.5 | Frío moderado |
+| 12.5 – 15.9 | 0 | Temperatura neutra |
+| 16.0 – 18.0 | -0.5 | Calor leve — empieza a revertir |
+| > 18.0 | **-1** | Calor — deshace frío acumulado |
+
+**Cuándo usarlo:** es el modelo más usado en Chile para decisiones de manejo (aplicación de frío artificial, timing de rompedores de dormancia). Más preciso que HF en zonas con inviernos templados como Chile Central.
+
+**Limitación:** el acumulado puede volverse negativo si hay olas de calor al inicio de la temporada. En temporadas donde el sensor empezó a registrar tarde (ej: julio en lugar de mayo), el acumulado Utah no es confiable.
 
 #### Modelo Dinámico (Erez & Fishman 1990)
 
@@ -599,21 +617,23 @@ state   = state_nuevo - porcion         ← parte decimal continúa
 >
 > ⚠️ Los sectores de Isla de Maipo (S1 EQ2/S3 EQ2 y S4 EQ1) tienen datos solo hasta diciembre 2025 — el sensor dejó de reportar.
 
-#### Modelo Grados Día Acumulados (GDA)
+#### Grados Día Acumulados (GDA)
 
-Métrica opuesta a las horas frío — mide el **calor acumulado** post-invierno. Relevante para estimar el avance fenológico (brotación, floración, madurez).
+Métrica opuesta a las horas frío — mide el **calor acumulado** post-invierno. No mide frío sino el avance fenológico una vez terminado el reposo. A mayor GDA, más avanzado el desarrollo del cultivo (brotación, floración, madurez).
 
-- **Base:** 7°C (estándar Chile para cerezos/ciruelos)
+**Cuándo usarlo:** estimar fecha de cosecha, comparar velocidad de desarrollo entre cuarteles y temporadas, calibrar modelos fenológicos.
+
+- **Base:** 7°C (temperatura mínima de crecimiento para cerezos/ciruelos en Chile)
 - **Fórmula por hora:** `MAX(temp - 7, 0) / 24`
-- **Período:** desde el **1 de agosto** de cada temporada
+- **Período:** desde el **1 de agosto** de cada temporada (inicio del calor primaveral)
 
 ```
 Hora a 25°C → GDA = (25-7)/24 = 0.75
 Hora a 10°C → GDA = (10-7)/24 = 0.125
-Hora a  5°C → GDA = 0  (bajo la base, no suma)
+Hora a  5°C → GDA = 0  (bajo la base, no aporta)
 ```
 
-Valores de referencia para temporada 2024-2025 (agosto→abril): ~3.000–3.300 GDA en Zuñiga.
+Valores de referencia temporada 2024-2025 (agosto→abril): ~3.000–3.300 GDA en Zuñiga.
 
 #### Ejemplo de uso
 
