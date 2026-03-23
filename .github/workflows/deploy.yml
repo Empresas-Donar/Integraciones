@@ -10,6 +10,7 @@ env:
   REGION: southamerica-west1  # Santiago, Chile - cerca de la DB
   JOB_NAME: integraciones-job
   ALERTS_JOB_NAME: integraciones-alerts
+  WEEKLY_REPORT_JOB_NAME: integraciones-weekly-report
 
 jobs:
   deploy:
@@ -67,8 +68,43 @@ jobs:
             --set-env-vars "ENV=production,TZ=America/Santiago" \
             --command "python,daily_channel_report.py"
 
+      - name: Deploy Weekly Report Job to Cloud Run
+        run: |
+          gcloud run jobs deploy ${{ env.WEEKLY_REPORT_JOB_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 10m \
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,RESEND_API_KEY=RESEND_API_KEY:latest" \
+            --set-env-vars "ENV=production,TZ=America/Santiago" \
+            --command "python,sensor_status_report.py,--period,weekly"
+
+      - name: Create or Update Weekly Report Cloud Scheduler
+        run: |
+          if gcloud scheduler jobs describe integraciones-weekly-report \
+              --location=${{ env.REGION }} --project=${{ env.PROJECT_ID }} &>/dev/null; then
+            gcloud scheduler jobs update http integraciones-weekly-report \
+              --location=${{ env.REGION }} \
+              --schedule="0 8 * * 1" \
+              --time-zone="America/Santiago" \
+              --uri="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.WEEKLY_REPORT_JOB_NAME }}:run" \
+              --message-body="{}" \
+              --oauth-service-account-email=${{ secrets.WIF_SERVICE_ACCOUNT }}
+          else
+            gcloud scheduler jobs create http integraciones-weekly-report \
+              --location=${{ env.REGION }} \
+              --schedule="0 8 * * 1" \
+              --time-zone="America/Santiago" \
+              --uri="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.WEEKLY_REPORT_JOB_NAME }}:run" \
+              --message-body="{}" \
+              --oauth-service-account-email=${{ secrets.WIF_SERVICE_ACCOUNT }}
+          fi
+
       - name: Output Job URLs
         run: |
           echo "Jobs deployed successfully!"
           echo "Main job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.JOB_NAME }}"
           echo "Alerts job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.ALERTS_JOB_NAME }}"
+          echo "Weekly report job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.WEEKLY_REPORT_JOB_NAME }}"
