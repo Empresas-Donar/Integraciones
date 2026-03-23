@@ -476,11 +476,11 @@ Se actualiza con `refresh_ubi_soil_sensors()` tras cada sync exitoso de Ubibot.
 
 ### `ubi_chill_hours` — Horas frío por sector y temporada
 
-**Propósito:** Calcula y acumula las horas frío hora a hora por sector, usando dos modelos estándar de la industria frutícola. Permite generar el reporte de HF acumuladas por temporada (equivalente a la planilla "Horas Frío IVU") directamente desde la base de datos.
+**Propósito:** Calcula y acumula las horas frío hora a hora por sector, usando tres modelos estándar de la industria frutícola. Permite generar los reportes de HF acumuladas y Porciones Frío por temporada (equivalentes a las planillas "Horas Frío IVU" y "PF 2025 IVU") directamente desde la base de datos.
 
 Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 
-**Registros:** ~243.000 | **Temporadas:** 2024-2025, 2025-2026
+**Registros:** ~244.000 | **Temporadas:** 2024-2025, 2025-2026
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -503,17 +503,21 @@ Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 | `gda_value` | numeric | **Grados día acumulados:** `MAX(temp - 7, 0) / 24` — calor útil por hora (base 7°C) |
 | `gda_accumulated` | numeric | GDA acumulados desde el 1 de agosto de la temporada |
 | `gda_season` | varchar | Temporada GDA (agosto–julio): `2024-2025` o `2025-2026` |
+| `dm_state` | numeric | **Modelo Dinámico:** estado interno entre 0 y 1 (fracción de moléculas en estado frío activo) |
+| `dm_value` | numeric | Porciones dinámicas generadas en esta hora (0 o entero positivo) |
+| `dm_accumulated` | numeric | Porciones dinámicas acumuladas desde el inicio de la temporada |
 | `rn` | integer | Número de fila dentro de la partición (uso interno) |
 
 **Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora. Un canal que cubre múltiples sectores genera una fila por sector.
 
-#### Los tres modelos calculados
+#### Los cuatro modelos calculados
 
 | Modelo | Columnas | Período | Uso |
 |--------|----------|---------|-----|
 | **Horas Frío** | `hf_value`, `hf_accumulated` | 1 mayo → 30 abril | Simple, siempre confiable |
-| **Porciones Frío** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso, confiable desde 2025-2026 |
+| **Porciones Frío Utah** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso, confiable desde 2025-2026 |
 | **Grados Día** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide acumulación de calor post-invierno |
+| **Modelo Dinámico** | `dm_state`, `dm_value`, `dm_accumulated` | 1 mayo → 30 abril | Más preciso que Utah, estándar internacional |
 
 #### Modelo Utah simplificado
 
@@ -532,6 +536,68 @@ Más preciso — el frío óptimo está entre 2.5–9.1°C. El calor resta horas
 | 12.5 – 15.9 | 0 |
 | 16.0 – 18.0 | -0.5 |
 | > 18.0 | **-1** — el calor deshace frío acumulado |
+
+#### Modelo Dinámico (Erez & Fishman 1990)
+
+El modelo más preciso disponible para estimar requerimientos de frío. Es el estándar internacional usado por el Volcani Center (Israel) y ampliamente adoptado en Chile para cerezos y ciruelos.
+
+**Lógica:** simula el comportamiento bioquímico de las plantas. El frío activa moléculas que inducen el reposo; el calor las destruye. Una "porción" se acumula cada vez que el estado interno (fracción de moléculas activas) cruza el valor 1 — en ese momento se cuenta 1 porción y el estado se resetea.
+
+**Constantes del modelo** (paper original Erez & Fishman 1990):
+
+| Parámetro | Valor | Descripción |
+|-----------|-------|-------------|
+| E1 | 4.150 | Energía de activación (formación) |
+| E5 | 1.6 | Estado de equilibrio térmico base |
+| E6 | 277 K | Temperatura óptima (3.85°C) |
+| E7 | 5.43×10⁻¹⁴ | Coeficiente preexponencial |
+| E8 | 8.740 | Energía de activación (tasa de transición) |
+
+**Fórmulas por hora:**
+```
+T_K     = temperatura + 273.16
+ftmprt  = E7 × exp(E8 / T_K)           ← tasa de transición
+xs      = E5 / (1 + exp(-E1 × (1/E6 - 1/T_K)))  ← equilibrio
+state_nuevo = state + (xs - state) × (1 - exp(-ftmprt))
+porcion = FLOOR(state_nuevo)            ← parte entera = porciones ganadas
+state   = state_nuevo - porcion         ← parte decimal continúa
+```
+
+**Función SQL:** `calc_dm_chill_hours(channel_id, field_sector_id, season)` — calcula toda la temporada con estado secuencial para un canal/sector.
+
+**Estado actual de los datos:**
+
+| Período | Canales | Estado |
+|---------|---------|--------|
+| 2025-10-05 → hoy | todos (21 combinaciones canal/sector) | ✅ calculado — 54.760 filas |
+| 2025-05-01 → 2025-09-30 | canal 80646 / sector 18 (Santina 2019, Zuñiga) | ✅ calculado — muestra de validación |
+| 2024-2025 completa | todos | ⏳ pendiente de calcular |
+
+> **Pendiente:** integrar el recálculo incremental en el proceso automático de sync. Por ahora se actualiza manualmente ejecutando `calc_dm_chill_hours()` por canal/sector.
+
+**Sectores con datos DM calculados — disponibles para validar con el cliente:**
+
+| Predio | Sector | Cuartel | Canal | Datos desde | Hasta | Porciones DM |
+|--------|--------|---------|-------|------------|-------|-------------|
+| ZUÑIGA | Sector 1 EQ 3 (San19s) | CEREZOS SANTINA 2019 CC-892 | 80646 | 01/05/2025 ⭐ | 18/03/2026 | **666** |
+| ZUÑIGA | Sector 5 EQ 3 (San20n) | CEREZOS SANTINA 2020 CC-899 | 88261 | 05/10/2025 | 22/03/2026 | **726** |
+| ZUÑIGA | Sector 2 EQ 3 (San19n) | CEREZOS SANTINA 2019 CC-892 | 88732 | 05/10/2025 | 22/03/2026 | **670** |
+| ZUÑIGA | Sector 4 EQ 3 (San20s) | CEREZOS SANTINA 2020 CC-899 | 88738 | 05/10/2025 | 22/03/2026 | **658** |
+| ZUÑIGA | Sector 1 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
+| ZUÑIGA | Sector 2 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
+| ZUÑIGA | Sector 3 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
+| ZUÑIGA | Sector 1 EQ 2 (San14) | CEREZOS SANTINA 2014 CC-883 | 83204 | 05/10/2025 | 22/03/2026 | **641** |
+| ZUÑIGA | Sector 4 EQ 2 (San18) | CEREZOS SANTINA 2018 CC-895 | 88257 | 05/10/2025 | 22/03/2026 | **632** |
+| ZUÑIGA | Sector 3 EQ 2 (Rai15) | CEREZOS RAINIER 2015 CC-882 | 83605 | 05/10/2025 | 22/03/2026 | **629** |
+| ZUÑIGA | Sector 3 EQ 2 (Rai15) | CEREZOS LAPINS 2015 CC-884 | 83605 | 05/10/2025 | 22/03/2026 | **629** |
+| ZUÑIGA | Sector 2 EQ 2 (Lap14) | CEREZOS LAPINS 2014 CC-881 | 88736 | 05/10/2025 | 22/03/2026 | **538** |
+| ISLA DE MAIPO | S2 EQ2 | CEREZOS SWEET ARYANA 2023 CC-422 | 88252 | 05/10/2025 | 19/03/2026 | **439** |
+| ISLA DE MAIPO | S1 EQ2 / S3 EQ2 | CEREZOS RED PACIFIC CC-421 | 88811 | 05/10/2025 | 18/12/2025 | **351** |
+| ISLA DE MAIPO | S4 EQ1 | CEREZOS RAINIER 2023 CC-431 | 88737 | 05/10/2025 | 21/12/2025 | **344** |
+
+> ⭐ **Mejor candidato para validar:** `Sector 1 EQ 3 (San19s)` es el único con datos desde el **1 de mayo 2025** (inicio de temporada completa). Los demás tienen datos desde el 5 de octubre 2025. Para comparar con la planilla Excel "PF 2025 IVU", usar este sector.
+>
+> ⚠️ Los sectores de Isla de Maipo (S1 EQ2/S3 EQ2 y S4 EQ1) tienen datos solo hasta diciembre 2025 — el sensor dejó de reportar.
 
 #### Modelo Grados Día Acumulados (GDA)
 
@@ -552,24 +618,34 @@ Valores de referencia para temporada 2024-2025 (agosto→abril): ~3.000–3.300 
 #### Ejemplo de uso
 
 ```sql
--- HF, porciones frío y GDA al día de hoy por sector
+-- Resumen al día de hoy: HF, Utah, Dinámico y GDA por sector
 SELECT irrigation_sector, orchard,
     MAX(hf_accumulated)   AS hf_hoy,
-    MAX(utah_accumulated) AS porciones_frio_hoy,
+    MAX(utah_accumulated) AS utah_hoy,
+    MAX(dm_accumulated)   AS porciones_dm_hoy,
     MAX(gda_accumulated)  AS gda_hoy
 FROM ubi_chill_hours
 WHERE season = '2025-2026'
 GROUP BY irrigation_sector, orchard
-ORDER BY hf_hoy DESC;
+ORDER BY porciones_dm_hoy DESC;
 
 -- Curva diaria de acumulación (para gráfico)
 SELECT date,
     MAX(hf_accumulated)   AS hf_acum,
     MAX(utah_accumulated) AS utah_acum,
+    MAX(dm_accumulated)   AS dm_acum,
     MAX(gda_accumulated)  AS gda_acum
 FROM ubi_chill_hours
 WHERE field_sector_id = 13 AND season = '2025-2026'
 GROUP BY date ORDER BY date;
+
+-- Detalle hora a hora Modelo Dinámico (equivalente planilla "PF 2025 IVU")
+SELECT date, hour, temperature,
+    dm_state, dm_value, dm_accumulated
+FROM ubi_chill_hours
+WHERE channel_id = 80646 AND field_sector_id = 18
+  AND season = '2025-2026'
+ORDER BY date, hour;
 ```
 
 #### Totales por temporada (referencia)
