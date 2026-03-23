@@ -4,6 +4,39 @@ Este documento explica qué datos recopila el sistema, de dónde vienen, cómo s
 
 ---
 
+## Índice
+
+- [¿Qué hace este sistema?](#qué-hace-este-sistema)
+- [Los dos campos](#los-dos-campos)
+- [Mapa de tablas](#mapa-de-tablas)
+- [Tablas de referencia](#tablas-de-referencia)
+  - [`field_sectors` — Tabla maestra de sectores](#field_sectors--tabla-maestra-de-sectores)
+  - [`wc_farms_zones` — Sectores de riego Wiseconn](#wc_farms_zones--sectores-de-riego-wiseconn)
+- [Tablas Wiseconn](#tablas-wiseconn)
+  - [`wc_zones_sensors` — Lecturas de sensores](#wc_zones_sensors--lecturas-de-sensores)
+  - [`wc_farms_realirrigation` — Riego real ejecutado](#wc_farms_realirrigation--riego-real-ejecutado)
+  - [`wc_farms_irrigation` — Riego programado](#wc_farms_irrigation--riego-programado)
+- [Tablas Ubibot](#tablas-ubibot)
+  - [`ubi_channel_data` — Catálogo de dispositivos](#ubi_channel_data--catálogo-de-dispositivos-ubibot)
+  - [`ubi_channel_summary` — Cabecera horaria](#ubi_channel_summary--cabecera-horaria-por-dispositivo)
+  - [`ubi_channels_fields` — Lecturas por sensor](#ubi_channels_fields--lecturas-por-sensor)
+- [Tabla de sistema](#tabla-de-sistema)
+  - [`execution_log` — Historial de ejecuciones](#execution_log--historial-de-ejecuciones)
+- [Tablas de reportería precalculadas](#tablas-de-reportería-precalculadas)
+  - [`ubi_sensor_pivot` — Pivot de sensores por hora](#ubi_sensor_pivot--pivot-de-sensores-por-hora)
+  - [`wc_kc_daily` — Kc diario por sector](#wc_kc_daily--kc-diario-por-sector)
+  - [`ubi_ambient_temperature` — Temperatura ambiente horaria](#ubi_ambient_temperature--temperatura-ambiente-horaria)
+  - [`ubi_soil_sensors` — Temperatura y humedad del suelo](#ubi_soil_sensors--temperatura-y-humedad-del-suelo-horaria)
+  - [`ubi_chill_hours` — Horas frío por sector y temporada](#ubi_chill_hours--horas-frío-por-sector-y-temporada)
+    - [Modelo HF](#modelo-horas-frío-hf--el-más-simple)
+    - [Modelo Utah](#modelo-utah-porciones-frío--intermedio)
+    - [Modelo Dinámico](#modelo-dinámico-erez--fishman-1990)
+    - [Grados Día (GDA)](#grados-día-acumulados-gda)
+- [Resumen de volumen de datos](#resumen-de-volumen-de-datos)
+- [Sensores pendientes de confirmar](#sensores-pendientes-de-confirmar)
+
+---
+
 ## ¿Qué hace este sistema?
 
 Cada hora, el sistema se conecta automáticamente a **dos plataformas externas** y descarga todos los datos de sensores y riego de los dos campos de Empresas Donar. Esos datos se guardan en una base de datos central desde donde se generan los reportes.
