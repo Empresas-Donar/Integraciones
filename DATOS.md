@@ -135,13 +135,48 @@ execution_log  (registro de cada ejecución del sistema)
 
 **Propósito:** Almacena el **último valor** de cada sensor en cada ejecución del pipeline. **No es una tabla de series de tiempo** — no guarda el historial completo de cada sensor, solo el snapshot más reciente cuando el pipeline corrió. Para Et0 y Etc, el valor del día es el acumulado diario (máximo del día).
 
-**Registros:** ~313.000 | **Rango:** ago 2024 → hoy
+**Registros:** ~317.000 | **Rango:** ago 2024 → hoy | **Frecuencia:** ~250 filas/día, ~57 tipos de sensor distintos
+
+#### ¿Para qué sirve?
+
+Es la tabla central de sensores de Wiseconn. Contiene datos de **dos tipos de fuente**:
+
+- **EMAs (Estaciones Meteorológicas Automáticas):** miden condiciones climáticas del campo — temperatura, humedad, lluvia, viento, radiación solar, Et0.
+- **Sensores de riego por sector:** miden lo que ocurre en cada equipo de riego — caudal, presión, volumen, fertigación, horas frío y grados día calculados por Wiseconn.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Sensores clave | Comentario |
+|----------|---------------|------------|
+| **Kc diario por cuartel** | `Et0` + `wc_farms_realirrigation` | Base del reporte de Kc. La función `f_kc()` y la tabla `wc_kc_daily` ya lo calculan |
+| **Evapotranspiración del cultivo** | `Etc` (mm) | 24 zonas, cubre todos los cuarteles activos |
+| **Condiciones climáticas** | `Temperatura - EMA`, `Humedad Relativa - EMA`, `Pluviometría - EMA`, `Radiacion Solar - EMA`, `Velocidad Viento - EMA` | Una sola EMA por predio — sirve como referencia climática del campo |
+| **Horas frío y grados día (Wiseconn)** | `Chill Hour Accumulated B7.2`, `Grados día Acumulado B10.0` | Calculado por Wiseconn directamente. Comparar con los modelos propios en `ubi_chill_hours` |
+| **Caudales y presiones** | `Caudalimetro EQ1/2/3`, `FIP 1/2/3 EQ*`, `Presión Eq 1/2/3` | Detectar anomalías en los equipos de riego |
+| **Fertigación** | `Fertigation Time`, `Fertigation Volume` | Cuánto fertilizante se aplicó por sector |
+| **Alertas de equipos** | `Battery Level`, `RF Power`, `Corte de energia EQ1`, `Falla de Nivel EQ*` | Sensores de estado operacional — base para alertas |
+
+#### Sensores disponibles
+
+| Categoría | Sensores |
+|-----------|----------|
+| **Evapotranspiración** | `Et0` (mm), `Etc` (mm) |
+| **Clima EMA** | `Temperatura - EMA`, `Humedad Relativa - EMA`, `Pluviometría - EMA`, `Radiacion Solar - EMA`, `Velocidad Viento - EMA`, `Rafaga de Viento - EMA`, `Dirección Viento - EMA`, `Presión Atmosférica - EMA` |
+| **Clima Davis API** | `Temperatura Davis API`, `Humedad Relativa Davis API`, `Lluvia Davis API`, `Viento Davis API`, `Radiación Davis API`, `Presion Davis API` |
+| **Riego** | `Irrigation Time` (min), `Irrigation Volume` (m³), `Irrigation Precipitation` (mm) |
+| **Caudal** | `Caudalimetro EQ1/2/3`, `FIP 1/2/3 EQ1/2/3` (m³/h), `Volumen Acumulado - Caudalimetro EQ1/2` |
+| **Presión** | `Presión Eq 1/2/3` (bar/Pa) |
+| **Fertigación** | `Fertigation Time` (min), `Fertigation Volume` (l) |
+| **Fenología** | `Chill Hour (Daily) B7.2`, `Chill Hour Accumulated B7.2` (h), `Hora frío Diario B7.2`, `Horas frío Acumulada B7.2`, `Grados Día Diario B10.0`, `Grados día Acumulado B10.0` (°C) |
+| **Estado operacional** | `Battery Level` (%), `RF Power` (dB), `Current` (A), `Corte de energia EQ1`, `Falla de Nivel EQ1/2/3` |
+
+**Registros:** ~317.000 | **Rango:** ago 2024 → hoy
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
 | `sensor_id` | varchar | ID del sensor en Wiseconn (formato `"6-53361-1"`) |
-| `name` | text | Nombre del sensor: `Et0`, `Etc`, `Temperature`, `Humidity`, `Irrigation Precipitation`, `Caudalimetro EQ1`, etc. |
+| `name` | text | Nombre del sensor: `Et0`, `Etc`, `Temperatura - EMA`, `Caudalimetro EQ1`, etc. |
 | `unit` | text | Unidad de medida: `mm`, `°C`, `%`, `m³/h`, `bar`, etc. |
 | `values` | double | Valor de la lectura |
 | `zone_id` | varchar | ID del sector. **Ojo:** se guarda con sufijo `.0` (ej: `"50927.0"`). Para hacer JOIN usar `CAST(NULLIF(zone_id,'NaN') AS numeric)::integer` |
@@ -164,6 +199,18 @@ FROM wc_zones_sensors s
 JOIN field_sectors fs ON CAST(NULLIF(s.zone_id,'NaN') AS numeric)::integer = fs.wc_zone_id
 WHERE fs.orchard = 'CEREZOS LAPINS 2014 CC-881'
 ORDER BY s.date DESC;
+
+-- Horas frío acumuladas según Wiseconn (comparar con ubi_chill_hours)
+SELECT date, zone_id, values AS horas_frio_acumuladas
+FROM wc_zones_sensors
+WHERE name = 'Chill Hour Accumulated B7.2'
+ORDER BY date DESC, zone_id;
+
+-- Alertas: sensores con batería baja
+SELECT date, zone_id, farm_id, values AS bateria_pct
+FROM wc_zones_sensors
+WHERE name = 'Battery Level' AND values < 20
+ORDER BY date DESC;
 ```
 
 ---
