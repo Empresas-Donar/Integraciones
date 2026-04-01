@@ -90,6 +90,26 @@ execution_log  (registro de cada ejecución del sistema)
 
 **Registros:** 22
 
+#### ¿Para qué sirve?
+
+Es la tabla que **conecta todo el sistema**. Sin ella, no hay forma de saber qué sensor Ubibot monitorea qué cuartel, ni qué zona de Wiseconn corresponde a qué variedad. Siempre que se quiera responder una pregunta del tipo "¿qué pasó en el cuartel X?", el camino empieza por esta tabla.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Ver todos los cuarteles y sus sectores** | Consulta directa — lista completa de los 22 sectores con campo, sector, cuartel y tipo de cultivo |
+| **Punto de partida para cualquier join** | Todas las tablas de datos (Wiseconn y Ubibot) se unen a través de esta tabla usando `wc_zone_id` o `ubibot_channel_ids` |
+| **Filtrar por predio o cultivo** | `WHERE field = 'ZUÑIGA'` o `WHERE crop_type = 'CEREZOS'` |
+| **Ver qué sensores Ubibot cubren cada cuartel** | Columna `ubibot_channel_ids` — algunos cuarteles tienen más de un dispositivo |
+
+```sql
+-- Lista completa de cuarteles
+SELECT field, irrigation_sector, orchard, crop_type, ubibot_channel_ids
+FROM field_sectors
+ORDER BY field, irrigation_sector;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -111,6 +131,29 @@ execution_log  (registro de cada ejecución del sistema)
 **Propósito:** Catálogo de todos los sectores de riego. Se actualiza en cada ejecución con la última lectura de Wiseconn (sobreescribe el registro anterior).
 
 **Registros:** 24 (22 sectores activos + 2 EMAs)
+
+#### ¿Para qué sirve?
+
+Es el catálogo técnico de cada sector de riego tal como lo conoce Wiseconn. Contiene la superficie, el caudal teórico del equipo y las coordenadas GPS de cada sector. Es la tabla que describe el **hardware** del sistema de riego — no los datos que genera, sino la configuración de cada zona.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Ver superficie de cada cuartel** | `area_m2` — útil para calcular lámina de riego en mm/m² |
+| **Conocer el caudal teórico de cada equipo** | `theoreticalflowm3h` — referencia para detectar si el caudal real difiere mucho del esperado |
+| **Ver el Kc configurado en Wiseconn** | `kc` — comparar con el Kc calculado en `wc_kc_daily` |
+| **Obtener coordenadas para mapas** | `southwest_lat/lng`, `northeast_lat/lng` — bounding box de cada sector |
+| **Ver estadísticas históricas de riego** | `irrigation_avg/max/min` — duración típica de los riegos por sector |
+
+```sql
+-- Superficie y caudal teórico por sector
+SELECT z.name, fs.orchard, fs.field,
+       z.area_m2, z.theoreticalflowm3h, z.kc
+FROM wc_farms_zones z
+JOIN field_sectors fs ON z.id = fs.wc_zone_id
+ORDER BY fs.field, z.name;
+```
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -221,6 +264,42 @@ ORDER BY date DESC;
 
 **Registros:** ~6.700 | **Rango:** dic 2023 → hoy
 
+#### ¿Para qué sirve?
+
+Es la tabla más importante para el análisis de riego. Cada fila es un evento de riego que **realmente ocurrió** en el campo — con la duración exacta, los milímetros aplicados y el volumen medido. Es la base del cálculo de Kc y de cualquier análisis de eficiencia hídrica.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Columnas clave | Comentario |
+|----------|---------------|------------|
+| **Cuánto se regó por cuartel** | `precipitation_mm`, `zone_id` → JOIN `field_sectors` | La columna principal — mm de agua aplicados por evento |
+| **Calendario de riegos** | `init_time`, `end_time`, `delta_time` | Ver cuándo y por cuánto tiempo se regó cada sector |
+| **Volumen total de agua aplicada** | `volume_m3` | Para comparar con aforo o disponibilidad hídrica |
+| **Eficiencia del equipo** | `flow_m3_h` vs `wc_farms_zones.theoreticalflowm3h` | Detectar caídas de caudal respecto al teórico |
+| **Riegos con falla** | `status = 'Executed with failure'` | Identificar eventos donde algo salió mal |
+| **Base del Kc** | `precipitation_mm` ÷ Et0 | Ya precalculado en `wc_kc_daily` |
+
+```sql
+-- Riego acumulado por cuartel en el último mes
+SELECT fs.field, fs.orchard, 
+       COUNT(*) AS eventos,
+       SUM(r.precipitation_mm) AS mm_total,
+       SUM(r.volume_m3) AS m3_total
+FROM wc_farms_realirrigation r
+JOIN field_sectors fs ON r.zone_id = fs.wc_zone_id
+WHERE r.date >= CURRENT_DATE - 30
+GROUP BY fs.field, fs.orchard
+ORDER BY fs.field, mm_total DESC;
+
+-- Riegos con falla recientes
+SELECT r.init_time, r.end_time, fs.orchard, r.status, r.precipitation_mm
+FROM wc_farms_realirrigation r
+JOIN field_sectors fs ON r.zone_id = fs.wc_zone_id
+WHERE r.status != 'Executed'
+  AND r.date >= CURRENT_DATE - 14
+ORDER BY r.init_time DESC;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -259,6 +338,41 @@ GROUP BY fs.orchard ORDER BY mm_regados DESC;
 
 **Registros:** ~6.200 | **Rango:** dic 2023 → hoy
 
+#### ¿Para qué sirve?
+
+Registra la **intención** del sistema de riego antes de que ocurra. Junto con `wc_farms_realirrigation`, permite responder preguntas como: ¿se regó lo que se programó? ¿Hubo programas cancelados? ¿Qué riegos están pendientes hoy?
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Columnas clave | Comentario |
+|----------|---------------|------------|
+| **Programado vs ejecutado** | JOIN con `wc_farms_realirrigation` vía `scheduled_irrigation_id` | Ver si el riego real coincide con el planificado |
+| **Riegos pendientes o cancelados** | `status = 'Pending'` o `'Cancelled'` | Detectar sectores que no regaron según lo planeado |
+| **Riegos manuales vs automáticos** | `irrigationtype` | Ver cuánta intervención manual hubo |
+| **Planificación de agua** | `precipitation_mm`, `volume_m3` programados | Estimar cuánta agua se planificó aplicar |
+
+```sql
+-- Programas no ejecutados en los últimos 30 días
+SELECT p.inittime, fs.orchard, p.status, p.irrigationtype,
+       p.precipitation_mm AS mm_programados
+FROM wc_farms_irrigation p
+JOIN field_sectors fs ON p.zone_id = fs.wc_zone_id
+WHERE p.status IN ('Cancelled', 'Pending')
+  AND p.date >= CURRENT_DATE - 30
+ORDER BY p.inittime DESC;
+
+-- Comparar programado vs real por sector
+SELECT fs.orchard,
+       SUM(p.precipitation_mm) AS mm_programados,
+       SUM(r.precipitation_mm) AS mm_reales,
+       ROUND(SUM(r.precipitation_mm) / NULLIF(SUM(p.precipitation_mm), 0) * 100, 1) AS pct_ejecutado
+FROM wc_farms_irrigation p
+JOIN wc_farms_realirrigation r ON p.id = r.scheduled_irrigation_id
+JOIN field_sectors fs ON p.zone_id = fs.wc_zone_id
+WHERE p.date >= CURRENT_DATE - 30
+GROUP BY fs.orchard ORDER BY pct_ejecutado;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -289,6 +403,26 @@ GROUP BY fs.orchard ORDER BY mm_regados DESC;
 
 **Registros:** 25
 
+#### ¿Para qué sirve?
+
+Es el directorio de los 25 dispositivos Ubibot instalados en ambos campos. Contiene el nombre, ubicación GPS y tipo de conexión de cada uno. Se usa principalmente para enriquecer consultas con el nombre legible del dispositivo o para saber su ubicación física.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Ver todos los dispositivos instalados** | Consulta directa — lista de los 25 dispositivos con nombre y coordenadas |
+| **Obtener el nombre del dispositivo en reportes** | JOIN con `channel_id` en cualquier tabla Ubibot |
+| **Ver coordenadas GPS para mapas** | `latitude`, `longitude` — ubicación exacta de cada sensor en campo |
+| **Verificar tipo de conexión** | `net` — si usa WiFi o GSM (útil para diagnosticar pérdida de señal) |
+
+```sql
+-- Lista de todos los dispositivos con sus coordenadas
+SELECT channel_id, name, latitude, longitude, net
+FROM ubi_channel_data
+ORDER BY name;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria interna |
@@ -309,6 +443,30 @@ GROUP BY fs.orchard ORDER BY mm_regados DESC;
 
 **Registros:** ~280.000 | **Rango:** may 2024 → hoy
 
+#### ¿Para qué sirve?
+
+Es la tabla "índice" de Ubibot — registra que un dispositivo reportó datos en una hora determinada, pero no los valores de los sensores en sí (esos están en `ubi_channels_fields`). Sirve principalmente como punto de join y para detectar brechas de conectividad: si un dispositivo no tiene fila en una hora, no reportó nada esa hora.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Detectar dispositivos sin reporte** | Si un `channel_id` no tiene filas para una hora, el dispositivo estuvo offline |
+| **Ver frecuencia de reporte por dispositivo** | `COUNT(*) GROUP BY channel_id, date` — cuántas horas reportó cada sensor |
+| **Punto de JOIN para lecturas detalladas** | `ubi_channel_summary.id = ubi_channels_fields.summary_id` |
+
+> **En la práctica**, la mayoría de consultas van directo a `ubi_channels_fields` o a las tablas precalculadas (`ubi_sensor_pivot`, `ubi_ambient_temperature`, etc.) sin pasar por esta tabla.
+
+```sql
+-- Dispositivos sin reporte en las últimas 24 horas
+SELECT c.name, c.channel_id, MAX(s.created_at) AS ultimo_reporte
+FROM ubi_channel_data c
+LEFT JOIN ubi_channel_summary s ON c.channel_id = s.channel_id
+GROUP BY c.name, c.channel_id
+HAVING MAX(s.created_at) < NOW() - INTERVAL '24 hours' OR MAX(s.created_at) IS NULL
+ORDER BY ultimo_reporte ASC;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | varchar(36) | UUID que identifica este resumen — se usa como `summary_id` en `ubi_channels_fields` |
@@ -326,6 +484,44 @@ GROUP BY fs.orchard ORDER BY mm_regados DESC;
 **Propósito:** La tabla más importante de Ubibot. Contiene el valor de **cada sensor individual** de cada dispositivo, por hora, con estadísticas del período (promedio, mínimo, máximo y cantidad de lecturas). Es la fuente para todos los análisis de temperatura de suelo, humedad, CO₂, etc.
 
 **Registros:** ~2.530.000 | **Rango:** may 2024 → hoy
+
+#### ¿Para qué sirve?
+
+Es el repositorio de **todas las lecturas brutas de Ubibot**. Cada dispositivo tiene múltiples sensores físicos instalados (temperatura, humedad, suelo, CO₂, etc.) y esta tabla guarda el promedio, mínimo y máximo de cada uno por hora. Es la fuente de datos más granular y completa de Ubibot — las tablas precalculadas (`ubi_sensor_pivot`, `ubi_ambient_temperature`, etc.) se construyen a partir de aquí.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Sensores clave | Comentario |
+|----------|---------------|------------|
+| **Temperatura ambiente por cuartel** | `Temperature` | Temperatura del aire. Para análisis de largo plazo, preferir `ubi_ambient_temperature` |
+| **Humedad del suelo** | `Humedad del suelo (25 cm)`, `Humedad del suelo (50 cm)` | Disponibilidad hídrica en el perfil del suelo |
+| **Temperatura del suelo** | `Temperatura del suelo (25 cm)`, `Temperatura del suelo (50 cm)` | Condición radicular y fenológica |
+| **CO₂ en ambientes controlados** | `Carbon Dioxide` | Para túneles o estructuras cerradas |
+| **Estado del dispositivo** | `Voltage` | Voltaje de la batería — bajo 3.6V empieza a fallar |
+| **Lecturas de suelo vía RS485** | `RS485 Soil Moisture`, `RS485 Soil Temperature` | Sensores externos conectados al dispositivo Ubibot |
+| **Variabilidad horaria** | `min` y `max` | Ver cuánto varió la temperatura dentro de cada hora |
+
+> **Tip:** Para la mayoría de consultas de temperatura ambiente o suelo por cuartel, es más conveniente usar `ubi_sensor_pivot` (formato ancho, ya con nombres de cuartel) o `ubi_soil_sensors` (suelo específicamente). Esta tabla es útil cuando se necesita acceder a un sensor no incluido en las tablas precalculadas.
+
+```sql
+-- Ver todos los tipos de sensores disponibles por dispositivo
+SELECT c.name AS dispositivo, f.name AS sensor, COUNT(*) AS horas_con_datos
+FROM ubi_channels_fields f
+JOIN ubi_channel_data c ON f.channel_id = c.channel_id
+WHERE f.date >= CURRENT_DATE - 30
+GROUP BY c.name, f.name
+ORDER BY c.name, f.name;
+
+-- Temperatura mínima nocturna por cuartel (últimos 7 días)
+SELECT f.date, fs.orchard, MIN(f.min) AS temp_min_noche
+FROM ubi_channels_fields f
+JOIN field_sectors fs ON f.channel_id = ANY(fs.ubibot_channel_ids)
+WHERE f.name = 'Temperature'
+  AND f.hour BETWEEN '22:00' AND '06:00'
+  AND f.date >= CURRENT_DATE - 7
+GROUP BY f.date, fs.orchard
+ORDER BY f.date DESC, temp_min_noche;
+```
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -366,6 +562,37 @@ ORDER BY f.date, f.hour, f.name;
 
 **Registros:** ~12.500 | **Rango:** jun 2024 → hoy
 
+#### ¿Para qué sirve?
+
+Es el registro de salud del sistema. Permite saber si el pipeline está funcionando correctamente, con qué frecuencia falla cada fuente de datos, y si hay brechas en la recolección. Si los datos de un sensor parecen incompletos, la primera pregunta es: ¿el pipeline corrió correctamente esa hora?
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Ver si el sistema está funcionando** | Verificar las últimas filas — ¿hay un registro de hace menos de 1 hora? |
+| **Tasa de éxito por fuente** | `SUM(CASE WHEN status_wiseconn = 'Success')` agrupado por semana |
+| **Detectar períodos con datos faltantes** | Buscar horas sin fila en `execution_log` o con `status != 'Success'` |
+| **Correlacionar fallas con datos incompletos** | Si hay un `Failed` en una hora, los datos de esa hora pueden estar incompletos |
+
+```sql
+-- Estado de las últimas 24 horas
+SELECT date AT TIME ZONE 'America/Santiago' AS hora_local,
+       status_wiseconn, status_ubibot
+FROM execution_log
+WHERE date >= NOW() - INTERVAL '24 hours'
+ORDER BY date DESC;
+
+-- Resumen de fallas por semana
+SELECT DATE_TRUNC('week', date) AS semana,
+       COUNT(*) AS ejecuciones,
+       SUM(CASE WHEN status_wiseconn = 'Success' THEN 1 ELSE 0 END) AS wc_ok,
+       SUM(CASE WHEN status_ubibot = 'Success' THEN 1 ELSE 0 END) AS ubi_ok
+FROM execution_log
+WHERE date >= NOW() - INTERVAL '60 days'
+GROUP BY semana ORDER BY semana DESC;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -404,6 +631,21 @@ Todas estas tablas siguen el mismo patrón:
 Se actualiza automáticamente al final de cada ejecución del pipeline mediante la función `refresh_ubi_sensor_pivot()`, que procesa solo los últimos 2 días con upsert.
 
 **Registros:** ~208.000 | **Rango:** may 2024 → hoy
+
+#### ¿Para qué sirve?
+
+Es la tabla **más cómoda para reportes y dashboards de Ubibot**. En lugar de tener que filtrar por nombre de sensor y hacer pivots manualmente, aquí cada sensor es una columna — temperatura, humedad de suelo, CO₂ y más están en la misma fila. Además ya tiene el nombre del cuartel incorporado, eliminando el JOIN con `field_sectors`.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Columnas clave |
+|----------|---------------|
+| **Temperatura y humedad del aire por cuartel** | `temperature`, `humidity` |
+| **Humedad del suelo a distintas profundidades** | `humedad_suelo_25cm`, `humedad_suelo_50cm`, `rs485_soil_moisture` |
+| **Temperatura del suelo** | `temperatura_suelo_25cm`, `temperatura_suelo_50cm` |
+| **Estado del dispositivo** | `voltage`, `gsm_rssi`, `wifi_rssi` — detectar batería baja o mala señal |
+| **CO₂ en túneles o estructuras** | `carbon_dioxide`, `carbon_dioxide_c1` |
+| **Reportes completos sin joins** | Una sola tabla con campo, sector, cuartel y todos los sensores |
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -461,6 +703,20 @@ Se actualiza con `refresh_wc_kc_daily()` tras cada sync exitoso de Wiseconn.
 
 **Registros:** ~4.900 | **Rango:** oct 2024 → hoy
 
+#### ¿Para qué sirve?
+
+Es la tabla principal para responder **¿estamos regando bien?** El Kc (coeficiente de cultivo) expresa cuánta agua aplicamos en relación a cuánta agua pierde el suelo por evapotranspiración. Un Kc cercano a 1 indica riego adecuado; muy por encima puede indicar exceso; muy por debajo, déficit hídrico.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Columnas clave | Comentario |
+|----------|---------------|------------|
+| **Reporte de Kc por cuartel** | `kc`, `orchard`, `date` | La consulta más frecuente — base de los reportes agronómicos |
+| **Tendencia de riego en la temporada** | `irrigated_mm` a lo largo del tiempo | Ver si el riego sigue la curva esperada del cultivo |
+| **Comparar Et0 vs riego** | `et0_mm` vs `irrigated_mm` | Días donde la demanda superó lo aplicado |
+| **Detectar cuarteles sin riego** | Días sin fila = Kc implícito 0 | Solo aparecen días donde hubo al menos un evento de riego |
+| **Comparar entre predios** | `field` | Zuñiga vs Isla de Maipo bajo las mismas condiciones climáticas |
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -497,6 +753,32 @@ Se actualiza con `refresh_ubi_ambient_temperature()` tras cada sync exitoso de U
 
 **Registros:** ~208.000 | **Rango:** may 2024 → hoy
 
+#### ¿Para qué sirve?
+
+Es la tabla más directa para consultar **temperatura del aire por cuartel**. Ya tiene el nombre del sector y cuartel incorporados, excluye los sensores de túnel que distorsionarían los valores de campo abierto, e incluye min y max horario para análisis de amplitud térmica.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Cómo |
+|----------|------|
+| **Temperatura horaria por cuartel** | Consulta directa sin joins |
+| **Temperatura mínima nocturna** | `MIN(temp_min)` filtrando horas nocturnas — clave para alertas de helada |
+| **Temperatura máxima diaria** | `MAX(temp_max)` por día — estrés térmico en verano |
+| **Comparar temperatura entre cuarteles** | `GROUP BY orchard` para ver diferencias entre sectores del mismo día |
+| **Serie histórica para modelos** | Base de datos para calcular GDA, horas frío, etc. |
+
+```sql
+-- Temperatura mínima por cuartel en el último mes (riesgo de helada)
+SELECT date, orchard, field,
+       MIN(temp_min) AS temp_min_dia,
+       MAX(temp_max) AS temp_max_dia,
+       AVG(temp_avg) AS temp_promedio
+FROM ubi_ambient_temperature
+WHERE date >= CURRENT_DATE - 30
+GROUP BY date, orchard, field
+ORDER BY date DESC, temp_min_dia;
+```
+
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
@@ -524,6 +806,30 @@ Se actualiza con `refresh_ubi_ambient_temperature()` tras cada sync exitoso de U
 Se actualiza con `refresh_ubi_soil_sensors()` tras cada sync exitoso de Ubibot.
 
 **Registros:** ~204.000 | **Rango:** may 2024 → hoy
+
+#### ¿Para qué sirve?
+
+Permite analizar el **estado hídrico y térmico del suelo** a distintas profundidades por cuartel. Es fundamental para decidir cuándo y cuánto regar — la humedad del suelo a 25 cm indica si las raíces superficiales tienen agua disponible, y a 50 cm muestra si el agua está llegando a la zona radicular profunda.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Análisis | Columnas clave | Comentario |
+|----------|---------------|------------|
+| **Humedad del suelo por profundidad** | `hum_25cm`, `hum_50cm`, `hum_rs485` | Ver si el riego está llegando a las distintas capas del suelo |
+| **Temperatura del suelo** | `temp_25cm`, `temp_50cm`, `temp_rs485` | Condición de raíces — importante en invierno y primavera |
+| **Seguimiento post-riego** | Serie temporal de `hum_25cm` o `hum_50cm` | Ver cómo sube y baja la humedad tras un evento de riego |
+| **Comparar sectores** | `GROUP BY orchard` | Ver cuál cuartel retiene más agua |
+
+> **Recordatorio de calidad:** El `temp_25cm` del canal `88252` (S2 EQ2, Isla de Maipo) reporta valores aberrantes (60–86°C). Ignorar esa columna para ese canal. Ver observaciones de calidad más abajo.
+
+```sql
+-- Humedad del suelo en Isla de Maipo, última semana
+SELECT date, hour, orchard, hum_25cm, hum_50cm, hum_rs485
+FROM ubi_soil_sensors
+WHERE field = 'ISLA DE MAIPO'
+  AND date >= CURRENT_DATE - 7
+ORDER BY date DESC, hour DESC, orchard;
+```
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
