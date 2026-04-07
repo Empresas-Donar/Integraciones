@@ -31,16 +31,24 @@ def connect():
 
 
 def fetch_fields(cur):
-    """Return list of (field, farm_id, channel_count) from field_sectors."""
+    """
+    Return list of (field, farm_id, baseline_channels) where baseline_channels
+    is the number of channels that reported in the last 7 days.
+    This avoids penalizing fields for channels that are assigned but long-inactive.
+    """
     cur.execute("""
-        SELECT field, farm_id,
-               COUNT(DISTINCT ch) AS channel_count
-        FROM field_sectors,
-             LATERAL unnest(ubibot_channel_ids) AS ch
-        GROUP BY field, farm_id
-        ORDER BY field
+        SELECT fs.field, fs.farm_id,
+               COUNT(DISTINCT ch) AS baseline_channels
+        FROM field_sectors fs,
+             LATERAL unnest(fs.ubibot_channel_ids) AS ch
+        WHERE ch IN (
+            SELECT DISTINCT channel_id FROM ubi_channels_fields
+            WHERE date >= CURRENT_DATE - 7 AND name = 'Temperature'
+        )
+        GROUP BY fs.field, fs.farm_id
+        ORDER BY fs.field
     """)
-    return cur.fetchall()  # (field, farm_id, channel_count)
+    return cur.fetchall()  # (field, farm_id, baseline_channels)
 
 
 def fetch_execution_summary(cur, since):
