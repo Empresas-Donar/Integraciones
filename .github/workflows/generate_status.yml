@@ -33,6 +33,11 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/update_status_system.py
 
+      - name: Update sensor_inventory table
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/update_sensor_inventory.py
+
       - name: Commit and push STATUS.md
         run: |
           git config user.name  "github-actions[bot]"
