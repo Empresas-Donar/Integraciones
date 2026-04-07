@@ -121,6 +121,15 @@ def main():
             except Exception as e:
                 logging.error(f"Error al enviar alerta por email: {e}")
 
+    # Refresh status_system every run (lightweight: 32 rows upsert)
+    # sensor_inventory runs once daily via generate_status.yml workflow (heavy query)
+    try:
+        from scripts.update_status_system import run as refresh_status_system
+        refresh_status_system()
+        logging.info("status_system refreshed")
+    except Exception as e:
+        logging.error(f"status_system refresh failed: {e}")
+
     total_time = time.time() - start_time
     logging.info(f"Total execution time: {total_time:.2f} seconds")
 

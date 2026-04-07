@@ -42,8 +42,8 @@ def fetch_fields(cur):
         FROM field_sectors fs,
              LATERAL unnest(fs.ubibot_channel_ids) AS ch
         WHERE ch IN (
-            SELECT DISTINCT channel_id FROM ubi_channels_fields
-            WHERE date >= CURRENT_DATE - 7 AND name = 'Temperature'
+            SELECT DISTINCT channel_id FROM ubi_ambient_temperature
+            WHERE date >= CURRENT_DATE - 7
         )
         GROUP BY fs.field, fs.farm_id
         ORDER BY fs.field
@@ -69,24 +69,20 @@ def fetch_execution_summary(cur, since):
 def fetch_ubibot_stats_per_field(cur, since):
     """
     Active channels and temperature stats per day per field.
-    Only counts channels assigned to each field via field_sectors.ubibot_channel_ids.
+    Uses ubi_ambient_temperature (precalculated, indexed) instead of
+    scanning 2.5M rows in ubi_channels_fields.
     """
     cur.execute("""
         SELECT
-            u.date,
-            fs.field,
-            COUNT(DISTINCT u.channel_id)             AS canales,
-            ROUND(AVG(u.avg)::numeric, 1)            AS temp_avg,
-            ROUND(MIN(u.min)::numeric, 1)            AS temp_min,
-            ROUND(MAX(u.max)::numeric, 1)            AS temp_max
-        FROM ubi_channels_fields u
-        JOIN (
-            SELECT DISTINCT field, unnest(ubibot_channel_ids) AS channel_id
-            FROM field_sectors
-        ) fs ON u.channel_id = fs.channel_id
-        WHERE u.name = 'Temperature'
-          AND u.date >= %s
-        GROUP BY u.date, fs.field
+            a.date,
+            a.field,
+            COUNT(DISTINCT a.channel_id)         AS canales,
+            ROUND(AVG(a.temp_avg)::numeric, 1)   AS temp_avg,
+            ROUND(MIN(a.temp_min)::numeric, 1)   AS temp_min,
+            ROUND(MAX(a.temp_max)::numeric, 1)   AS temp_max
+        FROM ubi_ambient_temperature a
+        WHERE a.date >= %s
+        GROUP BY a.date, a.field
     """, (since,))
     result = {}
     for row in cur.fetchall():
