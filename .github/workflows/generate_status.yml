@@ -28,6 +28,11 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/generate_status.py
 
+      - name: Update status_system table
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/update_status_system.py
+
       - name: Commit and push STATUS.md
         run: |
           git config user.name  "github-actions[bot]"
