@@ -159,9 +159,9 @@ def build_notes(ubi, irr, exec_row, expected_channels):
     return "; ".join(notes) if notes else None
 
 
-def compute_sistema(exec_row, ubibot_canales, expected_channels):
+def compute_status(exec_row, ubibot_channels, expected_channels):
     """
-    sistema = 'ok' | 'partial' | 'error'
+    status = 'ok' | 'partial' | 'error'
     Ubibot threshold is relative to the channels assigned to this field
     (so Isla de Maipo with 1 channel assigned is not penalized).
     """
@@ -178,34 +178,34 @@ def compute_sistema(exec_row, ubibot_canales, expected_channels):
     yellow_threshold = max(1, round(expected_channels * 0.4))
 
     executions_ok = (wc_ok == total and ubi_ok == total)
-    channels_ok = (ubibot_canales >= green_threshold)
+    channels_ok = (ubibot_channels >= green_threshold)
 
     if executions_ok and channels_ok:
         return "ok"
-    if wc_ok == 0 and ubi_ok == 0 and ubibot_canales < yellow_threshold:
+    if wc_ok == 0 and ubi_ok == 0 and ubibot_channels < yellow_threshold:
         return "error"
     return "partial"
 
 
-def upsert_row(cur, fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-               temp_avg, temp_min, temp_max, riego_mm, notes):
+def upsert_row(cur, date_, field, status, wc_executions, ubibot_channels,
+               temp_avg, temp_min, temp_max, irrigation_mm, notes):
     cur.execute("""
         INSERT INTO status_system
-            (fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-             temp_avg, temp_min, temp_max, riego_mm, notes, updated_at)
+            (date, field, status, wc_executions, ubibot_channels,
+             temp_avg, temp_min, temp_max, irrigation_mm, notes, updated_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (fecha, campo) DO UPDATE SET
-            sistema        = EXCLUDED.sistema,
-            wc_ejecuciones = EXCLUDED.wc_ejecuciones,
-            ubibot_canales = EXCLUDED.ubibot_canales,
-            temp_avg       = EXCLUDED.temp_avg,
-            temp_min       = EXCLUDED.temp_min,
-            temp_max       = EXCLUDED.temp_max,
-            riego_mm       = EXCLUDED.riego_mm,
-            notes          = EXCLUDED.notes,
-            updated_at     = NOW()
-    """, (fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-          temp_avg, temp_min, temp_max, riego_mm, notes))
+        ON CONFLICT (date, field) DO UPDATE SET
+            status          = EXCLUDED.status,
+            wc_executions   = EXCLUDED.wc_executions,
+            ubibot_channels = EXCLUDED.ubibot_channels,
+            temp_avg        = EXCLUDED.temp_avg,
+            temp_min        = EXCLUDED.temp_min,
+            temp_max        = EXCLUDED.temp_max,
+            irrigation_mm   = EXCLUDED.irrigation_mm,
+            notes           = EXCLUDED.notes,
+            updated_at      = NOW()
+    """, (date_, field, status, wc_executions, ubibot_channels,
+          temp_avg, temp_min, temp_max, irrigation_mm, notes))
 
 
 def run():
@@ -225,20 +225,20 @@ def run():
             break
 
         exec_row = exec_data.get(d)
-        wc_ejecuciones = f"{exec_row['wc_ok']}/{exec_row['total']}" if exec_row else None
+        wc_executions = f"{exec_row['wc_ok']}/{exec_row['total']}" if exec_row else None
 
-        for campo, _farm_id, expected_channels in fields:
-            ubi = ubi_stats.get((d, campo), {})
-            canales = ubi.get("canales", 0)
-            irr = irr_data.get((d, campo))
-            sistema = compute_sistema(exec_row, canales, expected_channels)
+        for field, _farm_id, expected_channels in fields:
+            ubi = ubi_stats.get((d, field), {})
+            channels = ubi.get("canales", 0)
+            irr = irr_data.get((d, field))
+            status = compute_status(exec_row, channels, expected_channels)
             notes = build_notes(ubi, irr, exec_row, expected_channels)
 
             upsert_row(
-                cur, d, campo,
-                sistema,
-                wc_ejecuciones,
-                canales or None,
+                cur, d, field,
+                status,
+                wc_executions,
+                channels or None,
                 ubi.get("temp_avg"),
                 ubi.get("temp_min"),
                 ubi.get("temp_max"),
