@@ -92,19 +92,71 @@ def fetch_ubibot_stats_per_field(cur, since):
 
 
 def fetch_irrigation_per_field(cur, since):
-    """Total riego_mm per day per field."""
+    """Total riego_mm per day per field. Also counts events with zero mm."""
     cur.execute("""
         SELECT
             r.date,
             fs.field,
-            ROUND(SUM(r.precipitation_mm)::numeric, 1) AS riego_mm
+            ROUND(SUM(r.precipitation_mm)::numeric, 1)              AS riego_mm,
+            COUNT(*) FILTER (WHERE r.precipitation_mm > 0)          AS events_with_mm,
+            COUNT(*) FILTER (WHERE r.precipitation_mm = 0)          AS events_zero_mm,
+            ROUND(SUM(EXTRACT(EPOCH FROM r.delta_time)/3600)::numeric, 1) AS total_hours
         FROM wc_farms_realirrigation r
         JOIN field_sectors fs ON fs.farm_id = r.farm_id
         WHERE r.date >= %s
-          AND r.precipitation_mm > 0
         GROUP BY r.date, fs.field
     """, (since,))
-    return {(r[0], r[1]): r[2] for r in cur.fetchall()}
+    result = {}
+    for r in cur.fetchall():
+        result[(r[0], r[1])] = {
+            "riego_mm": r[2],
+            "events_with_mm": r[3],
+            "events_zero_mm": r[4],
+            "total_hours": r[5],
+        }
+    return result
+
+
+def build_notes(ubi, irr, exec_row, expected_channels):
+    """Generate automatic notes based on anomalies detected."""
+    notes = []
+
+    # Irrigation executed but no mm recorded
+    if irr:
+        if irr["events_zero_mm"] > 0 and irr["events_with_mm"] == 0:
+            notes.append(
+                f"Riego ejecutado ({irr['total_hours']}h) sin mm registrados — "
+                f"caudalímetros sin datos en Wiseconn"
+            )
+        elif irr["events_zero_mm"] > 0:
+            notes.append(
+                f"{irr['events_zero_mm']} eventos de riego sin mm medidos"
+            )
+
+    # Ubibot channels below threshold
+    if ubi:
+        canales = ubi.get("canales", 0)
+        green_threshold = max(1, round(expected_channels * 0.8))
+        if 0 < canales < green_threshold:
+            notes.append(
+                f"Ubibot: {canales}/{expected_channels} canales activos"
+            )
+        elif canales == 0:
+            notes.append("Ubibot: sin canales activos")
+
+    # Execution failures
+    if exec_row:
+        total = exec_row["total"]
+        if exec_row["wc_ok"] < total:
+            failed = total - exec_row["wc_ok"]
+            notes.append(f"Wiseconn: {failed}/{total} ejecuciones fallidas")
+        if exec_row["ubi_ok"] < total:
+            failed = total - exec_row["ubi_ok"]
+            notes.append(f"Ubibot sync: {failed}/{total} ejecuciones fallidas")
+    elif exec_row is None:
+        notes.append("Sin ejecuciones registradas")
+
+    return "; ".join(notes) if notes else None
 
 
 def compute_sistema(exec_row, ubibot_canales, expected_channels):
@@ -136,12 +188,12 @@ def compute_sistema(exec_row, ubibot_canales, expected_channels):
 
 
 def upsert_row(cur, fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-               temp_avg, temp_min, temp_max, riego_mm):
+               temp_avg, temp_min, temp_max, riego_mm, notes):
     cur.execute("""
         INSERT INTO status_system
             (fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-             temp_avg, temp_min, temp_max, riego_mm, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+             temp_avg, temp_min, temp_max, riego_mm, notes, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         ON CONFLICT (fecha, campo) DO UPDATE SET
             sistema        = EXCLUDED.sistema,
             wc_ejecuciones = EXCLUDED.wc_ejecuciones,
@@ -150,9 +202,10 @@ def upsert_row(cur, fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
             temp_min       = EXCLUDED.temp_min,
             temp_max       = EXCLUDED.temp_max,
             riego_mm       = EXCLUDED.riego_mm,
+            notes          = EXCLUDED.notes,
             updated_at     = NOW()
     """, (fecha, campo, sistema, wc_ejecuciones, ubibot_canales,
-          temp_avg, temp_min, temp_max, riego_mm))
+          temp_avg, temp_min, temp_max, riego_mm, notes))
 
 
 def run():
@@ -177,7 +230,9 @@ def run():
         for campo, _farm_id, expected_channels in fields:
             ubi = ubi_stats.get((d, campo), {})
             canales = ubi.get("canales", 0)
+            irr = irr_data.get((d, campo))
             sistema = compute_sistema(exec_row, canales, expected_channels)
+            notes = build_notes(ubi, irr, exec_row, expected_channels)
 
             upsert_row(
                 cur, d, campo,
@@ -187,7 +242,8 @@ def run():
                 ubi.get("temp_avg"),
                 ubi.get("temp_min"),
                 ubi.get("temp_max"),
-                irr_data.get((d, campo)),
+                irr["riego_mm"] if irr and irr["riego_mm"] else None,
+                notes,
             )
             rows_written += 1
 
