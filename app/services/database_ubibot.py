@@ -267,47 +267,14 @@ def manage_data_ubi(processed_data, data_type):
 
 def manage_fields_ubi(df, batch_size=2000):
     """
-    Inserta/actualiza campos de Ubibot en la base de datos.
-    Optimizado: batch_size aumentado a 2000 y commit al final.
+    Inserta campos de Ubibot en la base de datos usando upsert.
+    ON CONFLICT DO NOTHING — los registros existentes no se tocan.
     """
     log_ubibot_event(
         "FIELDS_SYNC_START",
         "Iniciando sincronización de campos Ubibot",
         {"registros_recibidos": len(df), "batch_size": batch_size}
     )
-
-    try:
-        # Consultar registros existentes con su count para decidir si actualizar
-        select_query = """
-        SELECT created_at, channel_id, name, count
-        FROM ubi_channels_fields
-        WHERE created_at >= CURRENT_DATE - INTERVAL '11 days';
-        """
-        result = db.session.execute(text(select_query))
-        existing_records = result.fetchall()
-
-        # Crear diccionario para búsqueda rápida: (created_at_str, channel_id, name) -> count
-        existing_dict = {}
-        for row in existing_records:
-            created_at = row[0]
-            # Convertir a string ISO para comparación consistente
-            created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(created_at, 'strftime') else str(created_at)
-            key = (created_at_str, str(row[1]), row[2])  # created_at_str, channel_id, name
-            existing_dict[key] = row[3]  # count
-
-        log_ubibot_event(
-            "FIELDS_EXISTING_CHECK",
-            "Verificación de campos existentes",
-            {"registros_existentes_11_dias": len(existing_records)}
-        )
-    except Exception as e:
-        log_ubibot_event(
-            "FIELDS_QUERY_ERROR",
-            "Error al consultar campos existentes",
-            {"error": str(e)},
-            level="ERROR"
-        )
-        return
 
     # Limpieza de datos
     registros_antes = len(df)
@@ -340,42 +307,15 @@ def manage_fields_ubi(df, batch_size=2000):
         )
         return
 
-    # Separar registros nuevos de los que necesitan actualización
-    records_to_insert = []
-    records_to_update = []
-
-    for item in data_dicts:
-        created_at = item['created_at']
-        # Convertir a string ISO para comparación consistente (timestamps ya vienen sin timezone)
-        if hasattr(created_at, 'strftime'):
-            created_at_str = created_at.strftime('%Y-%m-%dT%H:%M:%S')
-        elif hasattr(created_at, 'isoformat'):
-            created_at_str = created_at.isoformat()
-        else:
-            created_at_str = str(created_at)
-
-        key = (created_at_str, str(item['channel_id']), item['name'])
-        if key in existing_dict:
-            # Ya existe - solo actualizar si count < 12
-            if existing_dict[key] is not None and existing_dict[key] < 12:
-                records_to_update.append(item)
-        else:
-            # No existe - insertar
-            records_to_insert.append(item)
-
-    # Estadísticas de los datos
     channels_unicos = df['channel_id'].nunique() if 'channel_id' in df.columns else 0
     campos_unicos = df['name'].unique().tolist() if 'name' in df.columns else []
     fechas_unicas = df['date'].unique().tolist() if 'date' in df.columns else []
 
     log_ubibot_event(
         "FIELDS_INSERT_PREVIEW",
-        "Preparando inserción/actualización de campos",
+        "Preparando inserción de campos",
         {
             "total_registros": total_records,
-            "registros_nuevos": len(records_to_insert),
-            "registros_a_actualizar": len(records_to_update),
-            "registros_omitidos": total_records - len(records_to_insert) - len(records_to_update),
             "canales_unicos": channels_unicos,
             "tipos_campo": campos_unicos[:10] if len(campos_unicos) > 10 else campos_unicos,
             "fechas": [str(f) for f in sorted(fechas_unicas)[:5]] if fechas_unicas else []
@@ -385,53 +325,24 @@ def manage_fields_ubi(df, batch_size=2000):
     insert_statement = """
     INSERT INTO ubi_channels_fields (created_at, channel_id, name, avg, count, min, max, date, hour, summary_id)
     VALUES (:created_at, :channel_id, :name, :avg, :count, :min, :max, :date, :hour, :summary_id)
-    ON CONFLICT (created_at, channel_id, name) DO UPDATE
-        SET avg = EXCLUDED.avg,
-            count = EXCLUDED.count,
-            min = EXCLUDED.min,
-            max = EXCLUDED.max,
-            summary_id = EXCLUDED.summary_id;
-    """
-
-    update_statement = """
-    UPDATE ubi_channels_fields
-    SET avg = :avg, count = :count, min = :min, max = :max
-    WHERE created_at = :created_at AND channel_id = :channel_id AND name = :name;
+    ON CONFLICT (created_at, channel_id, name) DO NOTHING;
     """
 
     try:
         inserted_count = 0
-        updated_count = 0
+        total_batches = (total_records + batch_size - 1) // batch_size
 
-        # Insertar nuevos registros en lotes
-        if records_to_insert:
-            total_insert_batches = (len(records_to_insert) + batch_size - 1) // batch_size
-            log_ubibot_event(
-                "FIELDS_INSERT_START",
-                "Iniciando inserción de registros nuevos",
-                {"total_registros": len(records_to_insert), "lotes": total_insert_batches}
-            )
+        log_ubibot_event(
+            "FIELDS_INSERT_START",
+            "Iniciando inserción de registros",
+            {"total_registros": total_records, "lotes": total_batches}
+        )
 
-            for i in range(0, len(records_to_insert), batch_size):
-                batch = records_to_insert[i:i + batch_size]
-                for item in batch:
-                    db.session.execute(text(insert_statement), item)
-                    inserted_count += 1
-
-        # Actualizar registros existentes en lotes
-        if records_to_update:
-            total_update_batches = (len(records_to_update) + batch_size - 1) // batch_size
-            log_ubibot_event(
-                "FIELDS_UPDATE_START",
-                "Iniciando actualización de registros existentes",
-                {"total_registros": len(records_to_update), "lotes": total_update_batches}
-            )
-
-            for i in range(0, len(records_to_update), batch_size):
-                batch = records_to_update[i:i + batch_size]
-                for item in batch:
-                    db.session.execute(text(update_statement), item)
-                    updated_count += 1
+        for i in range(0, total_records, batch_size):
+            batch = data_dicts[i:i + batch_size]
+            for item in batch:
+                db.session.execute(text(insert_statement), item)
+                inserted_count += 1
 
         db.session.commit()
 
@@ -440,7 +351,6 @@ def manage_fields_ubi(df, batch_size=2000):
             "Campos sincronizados correctamente",
             {
                 "registros_insertados": inserted_count,
-                "registros_actualizados": updated_count,
                 "canales_actualizados": channels_unicos,
                 "tipos_campo": campos_unicos
             }
