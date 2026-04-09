@@ -726,21 +726,84 @@ Es la tabla principal para responder **¿estamos regando bien?** El Kc (coeficie
 | `irrigation_sector` | text | Nombre del sector de riego |
 | `orchard` | text | Nombre del cuartel |
 | `crop_type` | text | `CEREZOS` o `CIRUELOS` |
-| `irrigated_mm` | numeric | Milímetros de riego aplicados ese día |
-| `et0_mm` | numeric | Et0 promedio del campo ese día (promedio de todas las EMAs) |
-| `kc` | numeric | `irrigated_mm ÷ et0_mm` |
+| `irrigated_mm` | numeric | Milímetros de riego calculados por Wiseconn (`volume_m3 / area_m2 × 1000`). Ver nota de corrección abajo. |
+| `et0_mm` | numeric | Et0 del campo ese día — MAX por zona EMA, luego promedio entre EMAs del predio. Zuñiga: promedio EMA Rainier 2015 + EMA Santina 2020. Isla de Maipo: EMA Isla de Maipo. Unidad: mm/día. Rango esperado: 1–7 mm/día en verano, 0.5–3 mm/día en invierno. |
+| `kc` | numeric | `irrigated_mm ÷ et0_mm` — **usar con factor de corrección**, ver nota abajo |
 
 **Restricción única:** `(date, field, irrigation_sector, orchard)` — necesaria porque algunos orchards tienen múltiples sectores de riego (ej: CIRUELOS ADULTOS CC-860 tiene 3 sectores en Zuñiga).
 
 > **Nota:** Solo hay filas para días con riego registrado en `wc_farms_realirrigation`. Días sin riego no aparecen en la tabla (Kc implícito = 0).
 
+---
+
+#### ⚠️ Corrección de Kc por cobertura de goteo
+
+**El `kc` almacenado en la tabla NO es directamente comparable con los Kc FAO-56 (rango esperado 0.6–1.0).**
+
+**Causa:** Wiseconn calcula `irrigated_mm = volume_m3 / area_m2_total × 1000`, donde `area_m2` es el área total del sector (~6 ha). Sin embargo, el riego por goteo solo moja una fracción de esa superficie (el área bajo los emisores). Esto hace que `irrigated_mm` y el `kc` resultante aparezcan inflados por un factor de ~6–10x.
+
+**Factor de corrección estándar aplicado:** `0.15` (15% de cobertura del suelo — estándar para goteo en cerezos y ciruelos en Chile Central).
+
+**Kc corregido:**
+```sql
+-- Kc diario corregido
+SELECT date, field, orchard,
+       ROUND((irrigated_mm * 0.15)::numeric, 2)                          AS irrigated_mm_real,
+       et0_mm,
+       ROUND(((irrigated_mm * 0.15) / NULLIF(et0_mm, 0))::numeric, 3)   AS kc_corregido
+FROM wc_kc_daily
+WHERE date BETWEEN '2026-01-01' AND '2026-04-06'
+  AND et0_mm > 0
+ORDER BY field, orchard, date;
+
+-- Kc semanal corregido (recomendado — el riego no ocurre todos los días)
+SELECT DATE_TRUNC('week', date)::date AS semana,
+       field, orchard,
+       ROUND(SUM(irrigated_mm * 0.15)::numeric, 2)                                       AS riego_real_mm,
+       ROUND(SUM(et0_mm)::numeric, 2)                                                     AS et0_acumulado,
+       ROUND((SUM(irrigated_mm * 0.15) / NULLIF(SUM(et0_mm), 0))::numeric, 3)            AS kc_semanal
+FROM wc_kc_daily
+WHERE date BETWEEN '2026-01-01' AND '2026-04-06'
+  AND et0_mm > 0
+GROUP BY DATE_TRUNC('week', date), field, orchard
+ORDER BY field, orchard, semana;
+```
+
+**Rangos de referencia FAO-56 para los cultivos del sistema** (riego por goteo, zona semiárida):
+
+| Cultivo | Kc inicio | Kc desarrollo | Kc mediados | Kc final |
+|---------|-----------|---------------|-------------|----------|
+| Cerezos | 0.45 | 0.70 | 1.00 | 0.75 |
+| Ciruelos | 0.45 | 0.70 | 1.05 | 0.75 |
+
+**Alertas agronómicas con kc_corregido:**
+- 🟢 `0.6–1.1` → rango normal para plena temporada (engrose/cosecha)
+- 🟡 `> 1.2` → sobreirrigación, revisar programación
+- 🔴 `< 0.4` en plena temporada → déficit hídrico o riego no registrado en Wiseconn
+- `kc = 0` con `et0 > 0` → sin riego ese día (puede ser planificado)
+
+**Validación temporada ene–mar 2026** (kc semanal corregido):
+- ✅ Cuarteles con KC coherente: LAPINS 2019, SANTINA 2019/2020 (Zuñiga), GLOW/RAINIER 2023 (Isla de Maipo) → 0.4–0.9
+- 🔴 KC = 0 toda la temporada: LAPINS 2014/2015, RAINIER 2015, SANTINA 2014/2018 (Zuñiga) → riego no registrado en Wiseconn, confirmar con campo
+- 🔴 KC < 0.1: RED PACIFIC CC-421, TULARE CC-450 (Isla de Maipo) → misma situación
+
+> **Pendiente:** Confirmar con el equipo agronómico el porcentaje real de cobertura por cuartel para ajustar el factor 0.15 si corresponde.
+
+---
+
 **Ejemplo de uso:**
 ```sql
--- Kc semanal por cuartel
-SELECT date, field, orchard, irrigated_mm, et0_mm, kc
+-- Kc semanal corregido por cuartel
+SELECT DATE_TRUNC('week', date)::date AS semana,
+       field, orchard,
+       ROUND(SUM(irrigated_mm * 0.15)::numeric, 2) AS riego_real_mm,
+       ROUND(SUM(et0_mm)::numeric, 2)               AS et0_acumulado,
+       ROUND((SUM(irrigated_mm * 0.15) / NULLIF(SUM(et0_mm), 0))::numeric, 3) AS kc_semanal
 FROM wc_kc_daily
 WHERE date BETWEEN '2026-03-01' AND '2026-03-18'
-ORDER BY date, field, orchard;
+  AND et0_mm > 0
+GROUP BY DATE_TRUNC('week', date), field, orchard
+ORDER BY field, orchard, semana;
 ```
 
 ---
