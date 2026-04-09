@@ -102,15 +102,24 @@ def run_fetch_process():
                             None
                         )
                         if matching_measure:
-                            last_value = (
-                                processed_sensor_data["values"][-1]
-                                if processed_sensor_data["values"]
-                                else None
+                            # Use yesterday's value — sensor_data returns [yesterday, today].
+                            # today's value is the partial intraday accumulation (resets at 00:00 UTC).
+                            # yesterday's value is the fully closed daily accumulation.
+                            yesterday_date = datetime.date.today() - datetime.timedelta(days=1)
+                            yesterday_value = next(
+                                (v for v in processed_sensor_data["values"]
+                                 if v.get("date") == yesterday_date),
+                                None
                             )
-                            matching_measure["values"] = last_value["value"] if last_value else None
-                            matching_measure["created_at"] = last_value.get("created_at", None) if last_value else None
-                            matching_measure["date"] = last_value.get("date", None) if last_value else None
-                            matching_measure["hour"] = last_value.get("hour", None) if last_value else None
+                            # Fall back to last available if yesterday not found
+                            target_value = yesterday_value or (
+                                processed_sensor_data["values"][-1]
+                                if processed_sensor_data["values"] else None
+                            )
+                            matching_measure["values"] = target_value["value"] if target_value else None
+                            matching_measure["created_at"] = target_value.get("created_at", None) if target_value else None
+                            matching_measure["date"] = target_value.get("date", None) if target_value else None
+                            matching_measure["hour"] = target_value.get("hour", None) if target_value else None
                             matching_measure["farm_id"] = farmId
                             combined_data.append(matching_measure)
 
