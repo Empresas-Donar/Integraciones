@@ -30,27 +30,9 @@ def manage_data(processed_data, data_type):
         return
 
     if data_type == "combined":
-        # Optimización: cargar registros existentes en memoria una sola vez
         logging.info(f"Procesando {len(processed_data)} registros de sensores...")
 
-        try:
-            # Obtener registros existentes de los últimos 11 días en una sola query
-            existing_query = text("""
-                SELECT created_at, sensor_id, farm_id, zone_id
-                FROM wc_zones_sensors
-                WHERE created_at >= CURRENT_DATE - INTERVAL '11 days'
-            """)
-            existing_results = db.session.execute(existing_query).fetchall()
-            existing_set = set(
-                (str(row[0].replace(tzinfo=None) if hasattr(row[0], 'tzinfo') else row[0]), str(row[1]), str(row[2]), str(row[3]) if row[3] else None)
-                for row in existing_results
-            )
-            logging.info(f"Cargados {len(existing_set)} registros existentes en memoria")
-        except Exception as e:
-            logging.error(f"Error cargando registros existentes: {e}")
-            existing_set = set()
-
-        records_to_add = []
+        rows_to_upsert = []
 
         for item in processed_data:
             try:
@@ -64,42 +46,51 @@ def manage_data(processed_data, data_type):
                 else:
                     zone_id = str(zone_id)
 
-                # Normalizar created_at a naive (sin timezone) para comparar con DB
+                # Normalizar created_at a naive (sin timezone)
                 if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
                     created_at_naive = created_at.replace(tzinfo=None)
                 else:
                     created_at_naive = created_at
 
-                # Verificar en memoria en lugar de query individual
-                key = (str(created_at_naive), str(sensor_id), farm_id, zone_id)
-                if key not in existing_set:
-                    new_record = WCZonesSensors(
-                        sensor_id=sensor_id,
-                        name=item.get("name"),
-                        unit=item.get("unit"),
-                        values=item.get("values"),
-                        created_at=created_at_naive,
-                        date=item.get("date"),
-                        hour=item.get("hour"),
-                        zone_id=zone_id,
-                        farm_id=farm_id
-                    )
-                    records_to_add.append(new_record)
+                rows_to_upsert.append({
+                    "sensor_id": sensor_id,
+                    "name": item.get("name"),
+                    "unit": item.get("unit"),
+                    "values": item.get("values"),
+                    "created_at": created_at_naive,
+                    "date": item.get("date"),
+                    "hour": item.get("hour"),
+                    "zone_id": zone_id,
+                    "farm_id": farm_id,
+                })
 
             except KeyError as e:
                 logging.error(f"Error: Falta la clave {e} en el registro {item}")
 
-        if records_to_add:
+        if rows_to_upsert:
             try:
-                logging.info(f"Insertando {len(records_to_add)} nuevos registros...")
-                db.session.bulk_save_objects(records_to_add)
+                logging.info(f"Upserting {len(rows_to_upsert)} registros de sensores...")
+                # ON CONFLICT en la clave natural (date, sensor_id, zone_id): actualiza el valor
+                # si la API entrega un dato revisado para ese día
+                upsert_sql = text("""
+                    INSERT INTO wc_zones_sensors
+                        (sensor_id, name, unit, values, created_at, date, hour, zone_id, farm_id)
+                    VALUES
+                        (:sensor_id, :name, :unit, :values, :created_at, :date, :hour, :zone_id, :farm_id)
+                    ON CONFLICT (date, sensor_id, zone_id)
+                    DO UPDATE SET
+                        values     = EXCLUDED.values,
+                        created_at = EXCLUDED.created_at,
+                        unit       = EXCLUDED.unit
+                """)
+                db.session.execute(upsert_sql, rows_to_upsert)
                 db.session.commit()
-                logging.info(f"Insertados {len(records_to_add)} registros de sensores exitosamente")
+                logging.info(f"Upsert completado: {len(rows_to_upsert)} registros procesados")
             except Exception as e:
                 db.session.rollback()
-                logging.error(f"Error inserting records: {e}")
+                logging.error(f"Error en upsert de sensores: {e}")
         else:
-            logging.info("No hay nuevos registros de sensores para insertar")
+            logging.info("No hay registros de sensores para procesar")
 
     elif data_type in ['zones', 'zones_imaipo']:
         farm_id = int(processed_data['farm_id'].iloc[0]) 
