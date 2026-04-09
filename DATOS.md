@@ -703,6 +703,26 @@ Se actualiza con `refresh_wc_kc_daily()` tras cada sync exitoso de Wiseconn.
 
 **Registros:** ~4.900 | **Rango:** oct 2024 → hoy
 
+#### ¿Qué es el Kc?
+
+**Kc (Coeficiente de Cultivo)** es un número adimensional que responde a: **¿cuánta agua aplicamos en relación a lo que el clima demandó ese día?**
+
+```
+Kc = irrigated_mm (agua aplicada) ÷ Et0 (demanda atmosférica del día)
+```
+
+| Valor Kc | Significado |
+|----------|-------------|
+| `= 1.0` | Regamos exactamente lo que la atmósfera demandó |
+| `0.6–1.0` | Rango normal para cerezos/ciruelos en plena temporada |
+| `< 0.4` en plena temporada | Posible déficit hídrico o riego no registrado |
+| `> 1.2` | Sobreirrigación — riesgo de asfixia radicular y lixiviación |
+| `= 0` con Et0 > 0 | Sin riego ese día (puede ser planificado) |
+
+El Kc cambia según la **etapa fenológica**: en brotación se riega menos (Kc ~0.45), en engrose de fruta se riega más (Kc ~1.0). Ver tabla FAO-56 más abajo.
+
+> **Kc de Wiseconn vs Kc calculado:** Wiseconn almacena un Kc fijo por zona en `wc_farms_zones.kc` (actualmente `1` en todos los sectores) — es el valor que el agrónomo ingresó para que Wiseconn *programe* el riego. El Kc en `wc_kc_daily` es diferente: es el Kc *real medido*, calculado con el riego que efectivamente se ejecutó.
+
 #### ¿Para qué sirve?
 
 Es la tabla principal para responder **¿estamos regando bien?** El Kc (coeficiente de cultivo) expresa cuánta agua aplicamos en relación a cuánta agua pierde el suelo por evapotranspiración. Un Kc cercano a 1 indica riego adecuado; muy por encima puede indicar exceso; muy por debajo, déficit hídrico.
