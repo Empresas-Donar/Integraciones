@@ -13,10 +13,12 @@ Este documento explica qué datos recopila el sistema, de dónde vienen, cómo s
   - [`field_sectors` — Tabla maestra de sectores](#field_sectors--tabla-maestra-de-sectores)
   - [`wc_farms_zones` — Sectores de riego Wiseconn](#wc_farms_zones--sectores-de-riego-wiseconn)
 - [Tablas Wiseconn](#tablas-wiseconn)
+  - [Cómo funciona la API de Wiseconn](#cómo-funciona-la-api-de-wiseconn)
   - [`wc_zones_sensors` — Lecturas de sensores](#wc_zones_sensors--lecturas-de-sensores)
   - [`wc_farms_realirrigation` — Riego real ejecutado](#wc_farms_realirrigation--riego-real-ejecutado)
   - [`wc_farms_irrigation` — Riego programado](#wc_farms_irrigation--riego-programado)
 - [Tablas Ubibot](#tablas-ubibot)
+  - [Cómo funciona la API de Ubibot](#cómo-funciona-la-api-de-ubibot)
   - [`ubi_channel_data` — Catálogo de dispositivos](#ubi_channel_data--catálogo-de-dispositivos-ubibot)
   - [`ubi_channel_summary` — Cabecera horaria](#ubi_channel_summary--cabecera-horaria-por-dispositivo)
   - [`ubi_channels_fields` — Lecturas por sensor](#ubi_channels_fields--lecturas-por-sensor)
@@ -173,6 +175,99 @@ ORDER BY fs.field, z.name;
 ---
 
 ## Tablas Wiseconn
+
+### Cómo funciona la API de Wiseconn
+
+Wiseconn expone una jerarquía de 4 niveles que el pipeline recorre en cada ejecución:
+
+```
+/farms
+  └── /farms/{id}/zones          (sectores de riego)
+  └── /farms/{id}/measures       (catálogo de sensores por zona)
+        └── /measures/{id}/data  (valores históricos del sensor)
+  └── /farms/{id}/realIrrigations (eventos de riego ejecutados)
+  └── /farms/{id}/irrigations     (programas de riego planificados)
+```
+
+**Autenticación:** header `api_key` en cada request.
+
+#### Nivel 1 — `/farms`
+
+Devuelve los dos predios. Se usan para generar dinámicamente los endpoints de zonas, medidas y riegos.
+
+```json
+{ "id": 14245, "name": "Zuñiga" }
+{ "id": 60544, "name": "Isla de Maipo" }
+```
+
+#### Nivel 2 — `/farms/{id}/zones`
+
+Devuelve los sectores de riego del predio. Zuñiga tiene 15 zonas, Isla de Maipo 9. Cada zona tiene un `id` que es el `zone_id` que atraviesa toda la base de datos.
+
+```json
+{ "id": 50918, "name": "Sector 1 EQ 1 (Dag)", "farmId": 14245, ... }
+```
+
+→ Se persiste en `wc_farms_zones`.
+
+#### Nivel 3 — `/farms/{id}/measures`
+
+Devuelve el catálogo completo de sensores del predio (~229 en Zuñiga). Cada sensor tiene un `id` único, el `zoneId` al que pertenece, el `name` del sensor, la unidad y el `lastData` (valor más reciente):
+
+```json
+{
+  "id": "6-53361-1",
+  "farmId": 14245,
+  "zoneId": 53361,
+  "name": "Et0",
+  "unit": "mm",
+  "lastData": 0.486,
+  "lastDataDate": "2026-04-09T00:00:00.000Z",
+  "sensorType": "Flow"
+}
+```
+
+→ El pipeline toma el `lastData` de cada sensor y lo guarda en `wc_zones_sensors`.
+
+#### Nivel 4 — `/measures/{id}/data?initTime=ayer&endTime=hoy`
+
+Devuelve el historial de valores del sensor para el rango de fechas. El pipeline lo usa para sensores específicos (Et0, Etc) para asegurar que se capture el acumulado diario correcto:
+
+```json
+[
+  { "time": "2026-04-08T00:00:00Z", "value": 3.094 },
+  { "time": "2026-04-09T00:00:00Z", "value": 0.486 }
+]
+```
+
+#### Por qué Et0 del día vale parcial hasta las 00:00
+
+Et0 es un **acumulado diario** — Wiseconn va sumando la evapotranspiración hora a hora. A las 08:00 AM marca `0.486 mm`, pero seguirá creciendo hasta que a las 00:00 del día siguiente cierre el acumulado (ej: `3.094 mm` para el día completo anterior).
+
+**Por eso `wc_kc_daily` usa `MAX(Et0)` por día** — el valor máximo del día equivale al acumulado final. Consultar Et0 intradía dará siempre un valor menor al real.
+
+#### Cómo entra a `wc_zones_sensors`
+
+El pipeline toma el `lastData` de cada measure y hace upsert por `(date, sensor_id, zone_id)`:
+
+```
+sensor_id  = "6-53361-1"       ← id del measure en Wiseconn
+name       = "Et0"
+unit       = "mm"
+values     = 0.486             ← lastData en el momento del run
+date       = 2026-04-09        ← fecha actual
+created_at = 2026-04-09 00:00:00
+zone_id    = "53361.0"         ← zoneId del measure (con sufijo .0)
+farm_id    = "14245"
+```
+
+La restricción unique `(date, sensor_id, zone_id)` significa que **cada ejecución horaria sobreescribe el valor del día**. No es una serie de tiempo por hora — es el snapshot más reciente del día.
+
+#### Cómo entra a `wc_farms_realirrigation`
+
+`/farms/{id}/realIrrigations?initTime=ayer&endTime=hoy` devuelve los eventos de riego ejecutados. Cada evento tiene inicio, fin, duración y volúmenes medidos. El pipeline los inserta directamente — un evento por fila, deduplicando por `id`.
+
+---
 
 ### `wc_zones_sensors` — Lecturas de sensores
 
@@ -396,6 +491,99 @@ GROUP BY fs.orchard ORDER BY pct_ejecutado;
 ---
 
 ## Tablas Ubibot
+
+### Cómo funciona la API de Ubibot
+
+Ubibot expone dos endpoints principales que el pipeline usa en cada ejecución:
+
+```
+/channels                        (catálogo de todos los dispositivos)
+/channels/{id}/summary           (resumen horario histórico por dispositivo)
+```
+
+**Autenticación:** query param `account_key` en cada request.
+
+#### Endpoint 1 — `/channels`
+
+Devuelve los 25 canales registrados en la cuenta. Para cada canal incluye el mapa de `field1`–`field15` → nombre del sensor instalado:
+
+```json
+{
+  "channel_id": 88736,
+  "name": "Sector 2 EQ2 (Lap14) (respaldo 2)",
+  "field1": "Temperature",
+  "field2": "Humidity",
+  "field3": "Voltage",
+  "field5": "GSM RSSI",
+  "field6": "Light",
+  "field7": "Temperatura del suelo (25 cm)",
+  ...
+}
+```
+
+Este mapa es esencial — sin él los valores de `field1`–`field15` en los feeds son números sin nombre. El pipeline lo usa para traducir campos a nombres al guardar en `ubi_channels_fields`.
+
+→ Se persiste en `ubi_channel_data`.
+
+#### Endpoint 2 — `/channels/{id}/summary`
+
+Devuelve el historial de resúmenes horarios del dispositivo (hasta ~30 días). Cada `feed` es una hora:
+
+```json
+{
+  "feeds": [
+    {
+      "created_at": "2026-04-09T07:00:00-03:00",
+      "field1": { "sum": 22.19, "avg": 7.40, "count": 3, "sd": 0.04, "min": 7.36, "max": 7.44 },
+      "field2": { "sum": 300.0, "avg": 100.0, "count": 3, "min": 100, "max": 100 },
+      "field3": { "avg": 4.12, "count": 1, "min": 4.12, "max": 4.12 },
+      "field5": { "avg": -69, "count": 1, "min": -71, "max": -63 },
+      "field6": { "avg": 186.15, "count": 3, "min": 84.75, "max": 297.15 }
+    }
+  ]
+}
+```
+
+**`count`** es el número de mediciones internas del sensor en esa hora — varía por tipo:
+- `Temperature`, `Humidity`: count=12 (mide cada 5 min)
+- `Voltage`, `GSM RSSI`: count=1 (mide una vez por hora por diseño)
+- `Light`: count≈12 (puede ser menor en horas oscuras)
+
+Un `count=0` con `avg=0` significa que el sensor físico no reportó esa hora — no es un error del pipeline.
+
+#### Cómo entra a la base de datos (3 pasos)
+
+**Paso 1 → `ubi_channel_summary`** (cabecera, 1 fila por canal por hora):
+```
+channel_id = 88736
+date       = 2026-04-09
+hour       = 07:00:00
+```
+
+**Paso 2 → `ubi_channels_fields`** (formato largo, N filas por canal por hora — una por sensor):
+```
+(88736, 'Temperature', avg=7.40, count=3, min=7.36, max=7.44, summary_id=...)
+(88736, 'Humidity',    avg=100,  count=3, min=100,  max=100,  summary_id=...)
+(88736, 'Voltage',     avg=4.12, count=1, min=4.12, max=4.12, summary_id=...)
+(88736, 'GSM RSSI',    avg=-69,  count=1, min=-69,  max=-63,  summary_id=...)
+(88736, 'Light',       avg=186,  count=3, min=84.75,max=297,  summary_id=...)
+```
+
+Deduplicación: `ON CONFLICT (created_at, channel_id, name) DO NOTHING` — si el registro ya existe, se ignora.
+
+**Paso 3 → `ubi_sensor_pivot`** (formato ancho — `refresh_ubi_sensor_pivot()` al final del pipeline):
+```
+channel_id=88736 | orchard='CEREZOS LAPINS 2014 CC-881' | date=2026-04-09 | hour=07:00
+temperature=7.40 | humidity=100 | light=186.15 | gsm_rssi=-69 | voltage=4.12
+```
+
+Aquí se incorporan los datos de `field_sectors` (campo, sector, cuartel) para evitar joins en los reportes.
+
+#### Batching y rate limiting
+
+Ubibot tiene rate limiting. El pipeline procesa los 25 canales en grupos de 10 con un sleep de 60 segundos entre grupos — por eso la parte de Ubibot tarda ~2-3 minutos del total de ~5 minutos de ejecución.
+
+---
 
 ### `ubi_channel_data` — Catálogo de dispositivos Ubibot
 
@@ -630,7 +818,7 @@ Todas estas tablas siguen el mismo patrón:
 
 Se actualiza automáticamente al final de cada ejecución del pipeline mediante la función `refresh_ubi_sensor_pivot()`, que procesa solo los últimos 2 días con upsert.
 
-**Registros:** ~208.000 | **Rango:** may 2024 → hoy
+**Registros:** ~213.000 | **Rango:** may 2024 → hoy | **Canales activos:** 10 de 18 | **Validado:** 2026-04-08
 
 #### ¿Para qué sirve?
 
@@ -677,6 +865,41 @@ Es la tabla **más cómoda para reportes y dashboards de Ubibot**. En lugar de t
 | `rs485_atmospheric_pressure` | numeric | Presión atmosférica vía RS485 (hPa) |
 | `wind_speed` | numeric | Velocidad del viento (m/s) |
 | `carbon_dioxide_c1` | numeric | CO₂ canal 1 (ppm) |
+
+#### Calidad de datos (validado 2026-04-08)
+
+| Columna | Completitud (últimos 7 días) | Nota |
+|---------|------------------------------|------|
+| `temperature` | 100% | Todos los canales activos |
+| `humidity` | 100% | Todos los canales activos |
+| `temperatura_suelo_25cm` | 100% | Todos los canales con sensor de suelo |
+| `temperatura_suelo_50cm` | 100% | Todos los canales con sensor de suelo |
+| `humedad_suelo_25cm` | 90.7% | Algunos canales no tienen este sensor |
+| `humedad_suelo_50cm` | 100% | Todos los canales con sensor de suelo |
+| `wind_speed` | 0% | Ningún canal tiene anemómetro instalado |
+
+#### Estado de canales (validado 2026-04-08)
+
+| channel_id | Cuartel | Última fecha | Estado |
+|------------|---------|-------------|--------|
+| 80646 | CEREZOS SANTINA 2019 CC-892 (Zuñiga) | 2026-04-08 | Activo |
+| 83204 | CEREZOS SANTINA 2014 CC-883 (Zuñiga) | 2026-04-08 | Activo |
+| 83605 | CEREZOS LAPINS 2015 CC-884 / RAINIER 2015 CC-882 (Zuñiga) | 2026-04-08 | Activo |
+| 88252 | CEREZOS SWEET ARYANA 2023 CC-422 (Isla de Maipo) | 2026-04-08 | Activo |
+| 88253 | CIRUELOS ADULTOS CC-860 (Zuñiga) | 2026-04-08 | Activo |
+| 88257 | CEREZOS SANTINA 2018 CC-895 (Zuñiga) | 2026-04-08 | Activo |
+| 88260 | CEREZOS SANTINA 2020 CC-899 (Zuñiga) | 2026-04-08 | Activo |
+| 88261 | CEREZOS SANTINA 2020 CC-899 (Zuñiga) | 2026-04-08 | Activo |
+| 88736 | CEREZOS LAPINS 2014 CC-881 (Zuñiga) | 2026-04-08 | Activo |
+| 88738 | CEREZOS SANTINA 2020 CC-899 (Zuñiga) | 2026-04-08 | Activo |
+| 88732 | CEREZOS SANTINA 2019 CC-892 (Zuñiga) | 2026-03-30 | Inactivo — sin datos hace +9 días |
+| 88737 | CEREZOS RAINIER 2023 CC-431 (Isla de Maipo) | 2025-12-21 | Inactivo — sin datos desde dic 2025 |
+| 88811 | CEREZOS RED PACIFIC CC-421 (Isla de Maipo) | 2025-12-18 | Inactivo — sin datos desde dic 2025 |
+| 87975 | CEREZOS SANTINA 2019 CC-892 (Zuñiga) | 2025-09-11 | Inactivo — sin datos desde sep 2025 |
+| 88733 | CEREZOS LAPINS 2014 CC-881 (Zuñiga) | 2025-08-30 | Inactivo — sin datos desde ago 2025 |
+| 88424 | CEREZOS LAPINS 2014 CC-881 (Zuñiga) | 2025-08-22 | Inactivo — sin datos desde ago 2025 |
+| 88813 | CEREZOS GLOW 2023 CC-426 (Isla de Maipo) | 2025-05-20 | Inactivo — sin datos desde may 2025 |
+| 88816 | CEREZOS SANTINA 2023 CC-424 (Isla de Maipo) | 2025-01-16 | Inactivo — sin datos desde ene 2025 |
 
 > **NULLs esperados:** Cada dispositivo solo tiene instalados los sensores físicos que le corresponden. Una columna NULL simplemente indica que ese dispositivo no tiene ese sensor — no es un error de datos.
 
@@ -1169,7 +1392,7 @@ ORDER BY date, hour;
 |-------|-----------|-----------------|
 | `ubi_channels_fields` | ~2.530.000 | may 2024 → hoy |
 | `ubi_channel_summary` | ~280.000 | may 2024 → hoy |
-| `ubi_sensor_pivot` | ~208.000 | may 2024 → hoy |
+| `ubi_sensor_pivot` | ~213.000 | may 2024 → hoy |
 | `ubi_ambient_temperature` | ~208.000 | may 2024 → hoy |
 | `ubi_soil_sensors` | ~204.000 | may 2024 → hoy |
 | `wc_zones_sensors` | ~313.000 | ago 2024 → hoy |
