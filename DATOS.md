@@ -26,14 +26,15 @@ Este documento explica qué datos recopila el sistema, de dónde vienen, cómo s
   - [`execution_log` — Historial de ejecuciones](#execution_log--historial-de-ejecuciones)
 - [Tablas de reportería precalculadas](#tablas-de-reportería-precalculadas)
   - [`ubi_sensor_pivot` — Pivot de sensores por hora](#ubi_sensor_pivot--pivot-de-sensores-por-hora)
-  - [`wc_kc_daily` — Kc diario por sector](#wc_kc_daily--kc-diario-por-sector)
+  - [`wc_kc_weekly` — Kc semanal por sector](#wc_kc_weekly--kc-semanal-por-sector)
   - [`ubi_ambient_temperature` — Temperatura ambiente horaria](#ubi_ambient_temperature--temperatura-ambiente-horaria)
   - [`ubi_soil_sensors` — Temperatura y humedad del suelo](#ubi_soil_sensors--temperatura-y-humedad-del-suelo-horaria)
   - [`ubi_chill_hours` — Horas frío por sector y temporada](#ubi_chill_hours--horas-frío-por-sector-y-temporada)
     - [Modelo HF](#modelo-horas-frío-hf--el-más-simple)
     - [Modelo Utah](#modelo-utah-porciones-frío--intermedio)
-    - [Modelo Dinámico](#modelo-dinámico-erez--fishman-1990)
     - [Grados Día (GDA)](#grados-día-acumulados-gda)
+  - [`ubi_chill_portions` — Porciones frío Modelo Dinámico](#ubi_chill_portions--porciones-frío-modelo-dinámico)
+    - [Modelo Dinámico](#modelo-dinámico-erez--fishman-1990)
 - [Resumen de volumen de datos](#resumen-de-volumen-de-datos)
 - [Sensores pendientes de confirmar](#sensores-pendientes-de-confirmar)
 
@@ -77,7 +78,9 @@ field_sectors  (tabla maestra — conecta todo)
                                       │
                                       ├──▶ ubi_channel_summary     (cabecera horaria por dispositivo)
                                       ├──▶ ubi_channels_fields     (lecturas por sensor)
-                                      └──▶ ubi_sensor_pivot        (pivot para reportes — 20 sensores como columnas)
+                                      ├──▶ ubi_sensor_pivot        (pivot para reportes — 20 sensores como columnas)
+                                      ├──▶ ubi_chill_hours         (HF, Utah, GDA — season desde 1/mayo)
+                                      └──▶ ubi_chill_portions      (Modelo Dinámico — season desde 1/enero)
 
 execution_log  (registro de cada ejecución del sistema)
 ```
@@ -144,7 +147,7 @@ Es el catálogo técnico de cada sector de riego tal como lo conoce Wiseconn. Co
 |----------|------|
 | **Ver superficie de cada cuartel** | `area_m2` — útil para calcular lámina de riego en mm/m² |
 | **Conocer el caudal teórico de cada equipo** | `theoreticalflowm3h` — referencia para detectar si el caudal real difiere mucho del esperado |
-| **Ver el Kc configurado en Wiseconn** | `kc` — comparar con el Kc calculado en `wc_kc_daily` |
+| **Ver el Kc configurado en Wiseconn** | `kc` — comparar con el Kc calculado en `wc_kc_weekly` |
 | **Obtener coordenadas para mapas** | `southwest_lat/lng`, `northeast_lat/lng` — bounding box de cada sector |
 | **Ver estadísticas históricas de riego** | `irrigation_avg/max/min` — duración típica de los riegos por sector |
 
@@ -244,7 +247,7 @@ Devuelve el historial de valores del sensor para el rango de fechas. El pipeline
 
 Et0 es un **acumulado diario** — Wiseconn va sumando la evapotranspiración hora a hora. A las 08:00 AM marca `0.486 mm`, pero seguirá creciendo hasta que a las 00:00 del día siguiente cierre el acumulado (ej: `3.094 mm` para el día completo anterior).
 
-**Por eso `wc_kc_daily` usa `MAX(Et0)` por día** — el valor máximo del día equivale al acumulado final. Consultar Et0 intradía dará siempre un valor menor al real.
+**Por eso `wc_kc_weekly` acumula con `SUM(MAX(Et0) por día)`** — el valor máximo del día equivale al acumulado final, y se suman los días de la semana para obtener el Et0 semanal. Consultar Et0 intradía dará siempre un valor menor al real.
 
 #### Cómo entra a `wc_zones_sensors`
 
@@ -286,7 +289,7 @@ Es la tabla central de sensores de Wiseconn. Contiene datos de **dos tipos de fu
 
 | Análisis | Sensores clave | Comentario |
 |----------|---------------|------------|
-| **Kc diario por cuartel** | `Et0` + `wc_farms_realirrigation` | Base del reporte de Kc. La función `f_kc()` y la tabla `wc_kc_daily` ya lo calculan |
+| **Kc semanal por cuartel** | `Et0` + `wc_farms_realirrigation` | Base del reporte de Kc. La tabla `wc_kc_weekly` ya lo calcula semanalmente |
 | **Evapotranspiración del cultivo** | `Etc` (mm) | 24 zonas, cubre todos los cuarteles activos |
 | **Condiciones climáticas** | `Temperatura - EMA`, `Humedad Relativa - EMA`, `Pluviometría - EMA`, `Radiacion Solar - EMA`, `Velocidad Viento - EMA` | Una sola EMA por predio — sirve como referencia climática del campo |
 | **Horas frío y grados día (Wiseconn)** | `Chill Hour Accumulated B7.2`, `Grados día Acumulado B10.0` | Calculado por Wiseconn directamente. Comparar con los modelos propios en `ubi_chill_hours` |
@@ -372,7 +375,7 @@ Es la tabla más importante para el análisis de riego. Cada fila es un evento d
 | **Volumen total de agua aplicada** | `volume_m3` | Para comparar con aforo o disponibilidad hídrica |
 | **Eficiencia del equipo** | `flow_m3_h` vs `wc_farms_zones.theoreticalflowm3h` | Detectar caídas de caudal respecto al teórico |
 | **Riegos con falla** | `status = 'Executed with failure'` | Identificar eventos donde algo salió mal |
-| **Base del Kc** | `precipitation_mm` ÷ Et0 | Ya precalculado en `wc_kc_daily` |
+| **Base del Kc** | `precipitation_mm` ÷ Et0 | Ya precalculado semanalmente en `wc_kc_weekly` |
 
 ```sql
 -- Riego acumulado por cuartel en el último mes
@@ -918,20 +921,20 @@ ORDER BY date DESC, hour DESC;
 
 ---
 
-### `wc_kc_daily` — Kc diario por sector
+### `wc_kc_weekly` — Kc semanal por sector
 
-**Propósito:** Tabla precalculada con el coeficiente de cultivo (Kc) diario por sector de riego. Combina `wc_farms_realirrigation` (riego ejecutado) con `wc_zones_sensors` (Et0) y `field_sectors`.
+**Propósito:** Tabla precalculada con el coeficiente de cultivo (Kc) semanal por sector de riego. Combina `wc_farms_realirrigation` (riego ejecutado) con `wc_zones_sensors` (Et0) y `field_sectors`. Cubre todos los predios desde agosto 2025.
 
-Se actualiza con `refresh_wc_kc_daily()` tras cada sync exitoso de Wiseconn.
+Se actualiza con `refresh_wc_kc_weekly()` tras cada sync exitoso de Wiseconn.
 
-**Registros:** ~4.900 | **Rango:** oct 2024 → hoy
+**Registros:** ~580 | **Rango:** ago 2025 → hoy
 
 #### ¿Qué es el Kc?
 
-**Kc (Coeficiente de Cultivo)** es un número adimensional que responde a: **¿cuánta agua aplicamos en relación a lo que el clima demandó ese día?**
+**Kc (Coeficiente de Cultivo)** es un número adimensional que responde a: **¿cuánta agua aplicamos en relación a lo que el clima demandó esa semana?**
 
 ```
-Kc = irrigated_mm (agua aplicada) ÷ Et0 (demanda atmosférica del día)
+Kc = SUM(irrigated_mm) ÷ SUM(et0_mm)   — acumulado semanal
 ```
 
 | Valor Kc | Significado |
@@ -940,77 +943,47 @@ Kc = irrigated_mm (agua aplicada) ÷ Et0 (demanda atmosférica del día)
 | `0.6–1.0` | Rango normal para cerezos/ciruelos en plena temporada |
 | `< 0.4` en plena temporada | Posible déficit hídrico o riego no registrado |
 | `> 1.2` | Sobreirrigación — riesgo de asfixia radicular y lixiviación |
-| `= 0` con Et0 > 0 | Sin riego ese día (puede ser planificado) |
+| `= 0` con Et0 > 0 | Sin riego esa semana (puede ser planificado) |
 
 El Kc cambia según la **etapa fenológica**: en brotación se riega menos (Kc ~0.45), en engrose de fruta se riega más (Kc ~1.0). Ver tabla FAO-56 más abajo.
 
-> **Kc de Wiseconn vs Kc calculado:** Wiseconn almacena un Kc fijo por zona en `wc_farms_zones.kc` (actualmente `1` en todos los sectores) — es el valor que el agrónomo ingresó para que Wiseconn *programe* el riego. El Kc en `wc_kc_daily` es diferente: es el Kc *real medido*, calculado con el riego que efectivamente se ejecutó.
+> **Kc de Wiseconn vs Kc calculado:** Wiseconn almacena un Kc fijo por zona en `wc_farms_zones.kc` (actualmente `1` en todos los sectores) — es el valor que el agrónomo ingresó para que Wiseconn *programe* el riego. El Kc en `wc_kc_weekly` es diferente: es el Kc *real medido*, calculado con el riego que efectivamente se ejecutó.
 
 #### ¿Para qué sirve?
 
-Es la tabla principal para responder **¿estamos regando bien?** El Kc (coeficiente de cultivo) expresa cuánta agua aplicamos en relación a cuánta agua pierde el suelo por evapotranspiración. Un Kc cercano a 1 indica riego adecuado; muy por encima puede indicar exceso; muy por debajo, déficit hídrico.
+Es la tabla principal para responder **¿estamos regando bien?** El nivel semanal es la granularidad que el asesor agronómico necesita para evaluar tendencias y tomar decisiones de ajuste de riego sin el ruido de días puntuales sin riego.
 
 #### ¿Qué se puede hacer con esta tabla?
 
 | Análisis | Columnas clave | Comentario |
 |----------|---------------|------------|
-| **Reporte de Kc por cuartel** | `kc`, `orchard`, `date` | La consulta más frecuente — base de los reportes agronómicos |
-| **Tendencia de riego en la temporada** | `irrigated_mm` a lo largo del tiempo | Ver si el riego sigue la curva esperada del cultivo |
-| **Comparar Et0 vs riego** | `et0_mm` vs `irrigated_mm` | Días donde la demanda superó lo aplicado |
-| **Detectar cuarteles sin riego** | Días sin fila = Kc implícito 0 | Solo aparecen días donde hubo al menos un evento de riego |
+| **Reporte de Kc semanal por cuartel** | `kc`, `orchard`, `week_start` | La consulta principal para reportes agronómicos |
+| **Tendencia de riego en la temporada** | `irrigated_mm` a lo largo de las semanas | Ver si el riego sigue la curva esperada del cultivo |
+| **Comparar Et0 vs riego** | `et0_mm` vs `irrigated_mm` | Semanas donde la demanda superó lo aplicado |
+| **Detectar cuarteles sin riego** | `kc = 0` o `irrigated_mm = 0` | Solo aparecen semanas donde hubo al menos un evento de riego |
 | **Comparar entre predios** | `field` | Zuñiga vs Isla de Maipo bajo las mismas condiciones climáticas |
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | integer | Clave primaria |
 | `field_sector_id` | integer | FK a `field_sectors.id` |
-| `date` | date | Fecha |
+| `week_start` | date | Lunes de la semana (inicio) |
+| `week_end` | date | Domingo de la semana (fin) |
+| `week_number` | integer | Número de semana ISO del año |
+| `year` | integer | Año |
 | `field` | text | Campo: `ZUÑIGA` o `ISLA DE MAIPO` |
 | `irrigation_sector` | text | Nombre del sector de riego |
 | `orchard` | text | Nombre del cuartel |
 | `crop_type` | text | `CEREZOS` o `CIRUELOS` |
-| `irrigated_mm` | numeric | Milímetros de riego calculados por Wiseconn (`volume_m3 / area_m2 × 1000`). Ver nota de corrección abajo. |
-| `et0_mm` | numeric | Et0 del campo ese día — MAX por zona EMA, luego promedio entre EMAs del predio. Zuñiga: promedio EMA Rainier 2015 + EMA Santina 2020. Isla de Maipo: EMA Isla de Maipo. Unidad: mm/día. Rango esperado: 1–7 mm/día en verano, 0.5–3 mm/día en invierno. |
-| `kc` | numeric | `irrigated_mm ÷ et0_mm` — **usar con factor de corrección**, ver nota abajo |
+| `irrigated_mm` | numeric | Suma semanal de mm de riego (calculado por Wiseconn: `volume_m3 / area_m2 × 1000`). |
+| `et0_mm` | numeric | Suma semanal de Et0 — MAX por zona EMA por día, luego promedio entre EMAs del predio. Zuñiga: promedio EMA Rainier 2015 + EMA Santina 2020. Isla de Maipo: EMA Isla de Maipo. |
+| `kc` | numeric | `SUM(irrigated_mm) ÷ SUM(et0_mm)` de la semana |
 
-**Restricción única:** `(date, field, irrigation_sector, orchard)` — necesaria porque algunos orchards tienen múltiples sectores de riego (ej: CIRUELOS ADULTOS CC-860 tiene 3 sectores en Zuñiga).
+**Restricción única:** `(week_start, field, irrigation_sector, orchard)`
 
-> **Nota:** Solo hay filas para días con riego registrado en `wc_farms_realirrigation`. Días sin riego no aparecen en la tabla (Kc implícito = 0).
+> **Nota:** Solo hay filas para semanas con al menos un riego registrado en `wc_farms_realirrigation`. Semanas sin riego no aparecen (Kc implícito = 0).
 
 ---
-
-#### ⚠️ Corrección de Kc por cobertura de goteo
-
-**El `kc` almacenado en la tabla NO es directamente comparable con los Kc FAO-56 (rango esperado 0.6–1.0).**
-
-**Causa:** Wiseconn calcula `irrigated_mm = volume_m3 / area_m2_total × 1000`, donde `area_m2` es el área total del sector (~6 ha). Sin embargo, el riego por goteo solo moja una fracción de esa superficie (el área bajo los emisores). Esto hace que `irrigated_mm` y el `kc` resultante aparezcan inflados por un factor de ~6–10x.
-
-**Factor de corrección estándar aplicado:** `0.15` (15% de cobertura del suelo — estándar para goteo en cerezos y ciruelos en Chile Central).
-
-**Kc corregido:**
-```sql
--- Kc diario corregido
-SELECT date, field, orchard,
-       ROUND((irrigated_mm * 0.15)::numeric, 2)                          AS irrigated_mm_real,
-       et0_mm,
-       ROUND(((irrigated_mm * 0.15) / NULLIF(et0_mm, 0))::numeric, 3)   AS kc_corregido
-FROM wc_kc_daily
-WHERE date BETWEEN '2026-01-01' AND '2026-04-06'
-  AND et0_mm > 0
-ORDER BY field, orchard, date;
-
--- Kc semanal corregido (recomendado — el riego no ocurre todos los días)
-SELECT DATE_TRUNC('week', date)::date AS semana,
-       field, orchard,
-       ROUND(SUM(irrigated_mm * 0.15)::numeric, 2)                                       AS riego_real_mm,
-       ROUND(SUM(et0_mm)::numeric, 2)                                                     AS et0_acumulado,
-       ROUND((SUM(irrigated_mm * 0.15) / NULLIF(SUM(et0_mm), 0))::numeric, 3)            AS kc_semanal
-FROM wc_kc_daily
-WHERE date BETWEEN '2026-01-01' AND '2026-04-06'
-  AND et0_mm > 0
-GROUP BY DATE_TRUNC('week', date), field, orchard
-ORDER BY field, orchard, semana;
-```
 
 **Rangos de referencia FAO-56 para los cultivos del sistema** (riego por goteo, zona semiárida):
 
@@ -1019,34 +992,27 @@ ORDER BY field, orchard, semana;
 | Cerezos | 0.45 | 0.70 | 1.00 | 0.75 |
 | Ciruelos | 0.45 | 0.70 | 1.05 | 0.75 |
 
-**Alertas agronómicas con kc_corregido:**
+**Alertas agronómicas:**
 - 🟢 `0.6–1.1` → rango normal para plena temporada (engrose/cosecha)
 - 🟡 `> 1.2` → sobreirrigación, revisar programación
 - 🔴 `< 0.4` en plena temporada → déficit hídrico o riego no registrado en Wiseconn
-- `kc = 0` con `et0 > 0` → sin riego ese día (puede ser planificado)
+- `kc = 0` con `et0 > 0` → sin riego esa semana (puede ser planificado)
 
-**Validación temporada ene–mar 2026** (kc semanal corregido):
-- ✅ Cuarteles con KC coherente: LAPINS 2019, SANTINA 2019/2020 (Zuñiga), GLOW/RAINIER 2023 (Isla de Maipo) → 0.4–0.9
-- 🔴 KC = 0 toda la temporada: LAPINS 2014/2015, RAINIER 2015, SANTINA 2014/2018 (Zuñiga) → riego no registrado en Wiseconn, confirmar con campo
-- 🔴 KC < 0.1: RED PACIFIC CC-421, TULARE CC-450 (Isla de Maipo) → misma situación
-
-> **Pendiente:** Confirmar con el equipo agronómico el porcentaje real de cobertura por cuartel para ajustar el factor 0.15 si corresponde.
+**Validación temporada ene–mar 2026:**
+- Cuarteles con KC coherente: LAPINS 2019, SANTINA 2019/2020 (Zuñiga), GLOW/RAINIER 2023 (Isla de Maipo) → 0.4–0.9
+- KC = 0 toda la temporada: LAPINS 2014/2015, RAINIER 2015, SANTINA 2014/2018 (Zuñiga) → riego no registrado en Wiseconn, confirmar con campo
+- KC < 0.1: RED PACIFIC CC-421, TULARE CC-450 (Isla de Maipo) → misma situación
 
 ---
 
 **Ejemplo de uso:**
 ```sql
--- Kc semanal corregido por cuartel
-SELECT DATE_TRUNC('week', date)::date AS semana,
-       field, orchard,
-       ROUND(SUM(irrigated_mm * 0.15)::numeric, 2) AS riego_real_mm,
-       ROUND(SUM(et0_mm)::numeric, 2)               AS et0_acumulado,
-       ROUND((SUM(irrigated_mm * 0.15) / NULLIF(SUM(et0_mm), 0))::numeric, 3) AS kc_semanal
-FROM wc_kc_daily
-WHERE date BETWEEN '2026-03-01' AND '2026-03-18'
+-- Kc semanal por cuartel (temporada reciente)
+SELECT week_start, week_end, field, orchard, irrigated_mm, et0_mm, kc
+FROM wc_kc_weekly
+WHERE week_start >= '2026-01-01'
   AND et0_mm > 0
-GROUP BY DATE_TRUNC('week', date), field, orchard
-ORDER BY field, orchard, semana;
+ORDER BY field, orchard, week_start;
 ```
 
 ---
@@ -1168,11 +1134,13 @@ ORDER BY date DESC, hour DESC, orchard;
 
 ### `ubi_chill_hours` — Horas frío por sector y temporada
 
-**Propósito:** Calcula y acumula las horas frío hora a hora por sector, usando tres modelos estándar de la industria frutícola. Permite generar los reportes de HF acumuladas y Porciones Frío por temporada (equivalentes a las planillas "Horas Frío IVU" y "PF 2025 IVU") directamente desde la base de datos.
+**Propósito:** Calcula y acumula las horas frío hora a hora por sector usando tres modelos: HF (horas frío clásico), Utah (porciones frío) y GDA (grados día). La temporada de HF y Utah parte el **1 de mayo**; GDA parte el **1 de agosto**.
 
 Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 
-**Registros:** ~244.000 | **Temporadas:** 2024-2025, 2025-2026
+> **Nota:** el Modelo Dinámico (porciones frío Erez & Fishman) vive en la tabla separada `ubi_chill_portions`, cuya temporada parte el **1 de enero**.
+
+**Registros:** ~250.000 | **Temporadas:** 2024-2025, 2025-2026
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -1187,29 +1155,25 @@ Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 | `date` | date | Fecha |
 | `hour` | time | Hora |
 | `temperature` | numeric | Temperatura ambiente (°C) |
-| `hf_value` | smallint | **Modelo Utah simplificado:** `1` si temp ≤ 7.2°C, `0` si no |
-| `hf_accumulated` | integer | HF acumuladas desde el 1 de mayo de la temporada |
-| `utah_value` | numeric | **Porciones frío (modelo Utah completo):** peso según rango de temperatura |
-| `utah_accumulated` | numeric | Porciones frío acumuladas desde el 1 de mayo. Nunca baja de 0 |
+| `hf_value` | smallint | **Horas frío:** `1` si temp ≤ 7.2°C, `0` si no |
+| `hf_accumulated` | integer | HF acumuladas desde el **1 de mayo** de la temporada |
+| `utah_value` | numeric | **Modelo Utah:** peso según rango de temperatura (puede ser negativo) |
+| `utah_accumulated` | numeric | Porciones Utah acumuladas desde el **1 de mayo** |
 | `season` | varchar | Temporada HF/Utah (mayo–abril): `2024-2025` o `2025-2026` |
-| `gda_value` | numeric | **Grados día acumulados:** `MAX(temp - 7, 0) / 24` — calor útil por hora (base 7°C) |
-| `gda_accumulated` | numeric | GDA acumulados desde el 1 de agosto de la temporada |
+| `gda_value` | numeric | Calor útil por hora: `MAX(temp - 7, 0) / 24` |
+| `gda_accumulated` | numeric | GDA acumulados desde el **1 de agosto** de la temporada |
 | `gda_season` | varchar | Temporada GDA (agosto–julio): `2024-2025` o `2025-2026` |
-| `dm_state` | numeric | **Modelo Dinámico:** estado interno entre 0 y 1 (fracción de moléculas en estado frío activo) |
-| `dm_value` | numeric | Porciones dinámicas generadas en esta hora (0 o entero positivo) |
-| `dm_accumulated` | numeric | Porciones dinámicas acumuladas desde el inicio de la temporada |
 | `rn` | integer | Número de fila dentro de la partición (uso interno) |
 
-**Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora. Un canal que cubre múltiples sectores genera una fila por sector.
+**Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora.
 
-#### Los cuatro modelos calculados
+#### Los tres modelos en esta tabla
 
 | Modelo | Columnas | Período | Uso |
 |--------|----------|---------|-----|
-| **Horas Frío** | `hf_value`, `hf_accumulated` | 1 mayo → 30 abril | Simple, siempre confiable |
-| **Porciones Frío Utah** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso, confiable desde 2025-2026 |
-| **Grados Día** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide acumulación de calor post-invierno |
-| **Modelo Dinámico** | `dm_state`, `dm_value`, `dm_accumulated` | 1 mayo → 30 abril | Más preciso que Utah, estándar internacional |
+| **Horas Frío (HF)** | `hf_value`, `hf_accumulated` | 1 mayo → 30 abril | Simple, siempre confiable |
+| **Porciones Frío Utah** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso que HF, puede ser negativo |
+| **Grados Día (GDA)** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide calor acumulado post-invierno |
 
 #### Modelo Horas Frío (HF) — el más simple
 
@@ -1247,68 +1211,6 @@ Desarrollado por Richardson et al. (1974) en la Universidad de Utah, EE.UU. Mejo
 
 **Limitación:** el acumulado puede volverse negativo si hay olas de calor al inicio de la temporada. En temporadas donde el sensor empezó a registrar tarde (ej: julio en lugar de mayo), el acumulado Utah no es confiable.
 
-#### Modelo Dinámico (Erez & Fishman 1990)
-
-El modelo más preciso disponible para estimar requerimientos de frío. Es el estándar internacional usado por el Volcani Center (Israel) y ampliamente adoptado en Chile para cerezos y ciruelos.
-
-**Lógica:** simula el comportamiento bioquímico de las plantas. El frío activa moléculas que inducen el reposo; el calor las destruye. Una "porción" se acumula cada vez que el estado interno (fracción de moléculas activas) cruza el valor 1 — en ese momento se cuenta 1 porción y el estado se resetea.
-
-**Constantes del modelo** (paper original Erez & Fishman 1990):
-
-| Parámetro | Valor | Descripción |
-|-----------|-------|-------------|
-| E1 | 4.150 | Energía de activación (formación) |
-| E5 | 1.6 | Estado de equilibrio térmico base |
-| E6 | 277 K | Temperatura óptima (3.85°C) |
-| E7 | 5.43×10⁻¹⁴ | Coeficiente preexponencial |
-| E8 | 8.740 | Energía de activación (tasa de transición) |
-
-**Fórmulas por hora:**
-```
-T_K     = temperatura + 273.16
-ftmprt  = E7 × exp(E8 / T_K)           ← tasa de transición
-xs      = E5 / (1 + exp(-E1 × (1/E6 - 1/T_K)))  ← equilibrio
-state_nuevo = state + (xs - state) × (1 - exp(-ftmprt))
-porcion = FLOOR(state_nuevo)            ← parte entera = porciones ganadas
-state   = state_nuevo - porcion         ← parte decimal continúa
-```
-
-**Función SQL:** `calc_dm_chill_hours(channel_id, field_sector_id, season)` — calcula toda la temporada con estado secuencial para un canal/sector.
-
-**Estado actual de los datos:**
-
-| Período | Canales | Estado |
-|---------|---------|--------|
-| 2025-10-05 → hoy | todos (21 combinaciones canal/sector) | ✅ calculado — 54.760 filas |
-| 2025-05-01 → 2025-09-30 | canal 80646 / sector 18 (Santina 2019, Zuñiga) | ✅ calculado — muestra de validación |
-| 2024-2025 completa | todos | ⏳ pendiente de calcular |
-
-> **Pendiente:** integrar el recálculo incremental en el proceso automático de sync. Por ahora se actualiza manualmente ejecutando `calc_dm_chill_hours()` por canal/sector.
-
-**Sectores con datos DM calculados — disponibles para validar con el cliente:**
-
-| Predio | Sector | Cuartel | Canal | Datos desde | Hasta | Porciones DM |
-|--------|--------|---------|-------|------------|-------|-------------|
-| ZUÑIGA | Sector 1 EQ 3 (San19s) | CEREZOS SANTINA 2019 CC-892 | 80646 | 01/05/2025 ⭐ | 18/03/2026 | **666** |
-| ZUÑIGA | Sector 5 EQ 3 (San20n) | CEREZOS SANTINA 2020 CC-899 | 88261 | 05/10/2025 | 22/03/2026 | **726** |
-| ZUÑIGA | Sector 2 EQ 3 (San19n) | CEREZOS SANTINA 2019 CC-892 | 88732 | 05/10/2025 | 22/03/2026 | **670** |
-| ZUÑIGA | Sector 4 EQ 3 (San20s) | CEREZOS SANTINA 2020 CC-899 | 88738 | 05/10/2025 | 22/03/2026 | **658** |
-| ZUÑIGA | Sector 1 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
-| ZUÑIGA | Sector 2 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
-| ZUÑIGA | Sector 3 EQ 1 (Dag) | CIRUELOS ADULTOS CC-860 | 88253 | 05/10/2025 | 22/03/2026 | **644** |
-| ZUÑIGA | Sector 1 EQ 2 (San14) | CEREZOS SANTINA 2014 CC-883 | 83204 | 05/10/2025 | 22/03/2026 | **641** |
-| ZUÑIGA | Sector 4 EQ 2 (San18) | CEREZOS SANTINA 2018 CC-895 | 88257 | 05/10/2025 | 22/03/2026 | **632** |
-| ZUÑIGA | Sector 3 EQ 2 (Rai15) | CEREZOS RAINIER 2015 CC-882 | 83605 | 05/10/2025 | 22/03/2026 | **629** |
-| ZUÑIGA | Sector 3 EQ 2 (Rai15) | CEREZOS LAPINS 2015 CC-884 | 83605 | 05/10/2025 | 22/03/2026 | **629** |
-| ZUÑIGA | Sector 2 EQ 2 (Lap14) | CEREZOS LAPINS 2014 CC-881 | 88736 | 05/10/2025 | 22/03/2026 | **538** |
-| ISLA DE MAIPO | S2 EQ2 | CEREZOS SWEET ARYANA 2023 CC-422 | 88252 | 05/10/2025 | 19/03/2026 | **439** |
-| ISLA DE MAIPO | S1 EQ2 / S3 EQ2 | CEREZOS RED PACIFIC CC-421 | 88811 | 05/10/2025 | 18/12/2025 | **351** |
-| ISLA DE MAIPO | S4 EQ1 | CEREZOS RAINIER 2023 CC-431 | 88737 | 05/10/2025 | 21/12/2025 | **344** |
-
-> ⭐ **Mejor candidato para validar:** `Sector 1 EQ 3 (San19s)` es el único con datos desde el **1 de mayo 2025** (inicio de temporada completa). Los demás tienen datos desde el 5 de octubre 2025. Para comparar con la planilla Excel "PF 2025 IVU", usar este sector.
->
-> ⚠️ Los sectores de Isla de Maipo (S1 EQ2/S3 EQ2 y S4 EQ1) tienen datos solo hasta diciembre 2025 — el sensor dejó de reportar.
-
 #### Grados Día Acumulados (GDA)
 
 Métrica opuesta a las horas frío — mide el **calor acumulado** post-invierno. No mide frío sino el avance fenológico una vez terminado el reposo. A mayor GDA, más avanzado el desarrollo del cultivo (brotación, floración, madurez).
@@ -1330,49 +1232,34 @@ Valores de referencia temporada 2024-2025 (agosto→abril): ~3.000–3.300 GDA e
 #### Ejemplo de uso
 
 ```sql
--- Resumen al día de hoy: HF, Utah, Dinámico y GDA por sector
-SELECT irrigation_sector, orchard,
-    MAX(hf_accumulated)   AS hf_hoy,
-    MAX(utah_accumulated) AS utah_hoy,
-    MAX(dm_accumulated)   AS porciones_dm_hoy,
-    MAX(gda_accumulated)  AS gda_hoy
+-- Horas frío y Utah acumuladas al 31/jul 2025 por cuartel (1/mayo → 31/jul)
+SELECT field, orchard,
+    MAX(hf_accumulated)   AS horas_frio,
+    MAX(utah_accumulated) AS utah_acum
 FROM ubi_chill_hours
 WHERE season = '2025-2026'
-GROUP BY irrigation_sector, orchard
-ORDER BY porciones_dm_hoy DESC;
+  AND date <= '2025-07-31'
+GROUP BY field, orchard
+ORDER BY field, orchard;
 
--- Curva diaria de acumulación (para gráfico)
+-- Curva diaria de HF y Utah por sector (para gráfico)
 SELECT date,
     MAX(hf_accumulated)   AS hf_acum,
     MAX(utah_accumulated) AS utah_acum,
-    MAX(dm_accumulated)   AS dm_acum,
     MAX(gda_accumulated)  AS gda_acum
 FROM ubi_chill_hours
 WHERE field_sector_id = 13 AND season = '2025-2026'
 GROUP BY date ORDER BY date;
 
--- Detalle hora a hora Modelo Dinámico (equivalente planilla "PF 2025 IVU")
-SELECT date, hour, temperature,
-    dm_state, dm_value, dm_accumulated
+-- Temporada completa HF y GDA por sector
+SELECT field, orchard,
+    MAX(hf_accumulated)   AS hf_temporada,
+    MAX(gda_accumulated)  AS gda_temporada
 FROM ubi_chill_hours
-WHERE channel_id = 80646 AND field_sector_id = 18
-  AND season = '2025-2026'
-ORDER BY date, hour;
+WHERE season = '2025-2026'
+GROUP BY field, orchard
+ORDER BY field, orchard;
 ```
-
-#### Totales por temporada (referencia)
-
-| Sensor | Temporada | Inicio datos | HF total | Utah total | Confiable |
-|--------|-----------|-------------|----------|------------|-----------|
-| Sector 1 EQ 3 (San19s) | 2024-2025 | 01/05/2024 | 1.321 | 748 | ✅ |
-| Sector 3 EQ 2 (Rai15) | 2024-2025 | 10/05/2024 | 1.417 | 877 | ✅ |
-| Sector 1 EQ 2 (San14) | 2024-2025 | 02/05/2024 | 1.227 | 429 | ✅ |
-| S2 EQ2 | 2024-2025 | 29/07/2024 | 347 | — | ⚠️ parcial |
-| S2 EQ1 | 2024-2025 | 06/08/2024 | 221 | — | ⚠️ parcial |
-| Sector 1 EQ 1 (Dag) | 2025-2026 | 01/05/2025 | 1.336 | 1.113 | ✅ |
-| Sector 3 EQ 2 (Rai15) | 2025-2026 | 01/05/2025 | 1.275 | 904 | ✅ |
-| S2 EQ1 | 2025-2026 | 01/05/2025 | 1.196 | 1.046 | ✅ |
-| S2 EQ2 | 2025-2026 | 01/05/2025 | 1.099 | 864 | ✅ |
 
 #### Observaciones de calidad de datos
 
@@ -1380,9 +1267,117 @@ ORDER BY date, hour;
 >
 > - **Temporada 2025-2026:** todos los sensores tienen datos desde el 1 de mayo 2025 → `utah_accumulated` es **confiable**.
 > - **Temporada 2024-2025 — Zuñiga** (Sector 1 EQ 2, Sector 1 EQ 3, Sector 3 EQ 2): datos desde mayo 2024 → `utah_accumulated` **confiable**.
-> - **Temporada 2024-2025 — Isla de Maipo** (S2 EQ1, S2 EQ2, S3 EQ1, S3 EQ2) y varios de Zuñiga: datos desde **julio-agosto 2024**, no desde mayo → `utah_accumulated` **no confiable** para esa temporada (arroja valores negativos por el verano siguiente que resta sin haber acumulado el invierno completo). Usar solo `hf_accumulated` para esos casos.
+> - **Temporada 2024-2025 — Isla de Maipo** y varios de Zuñiga: datos desde **julio-agosto 2024**, no desde mayo → `utah_accumulated` **no confiable** para esa temporada (el verano siguiente resta sin haber acumulado el invierno completo). Usar solo `hf_accumulated` en esos casos.
 >
-> **`hf_accumulated` es siempre confiable** — nunca es negativo, solo refleja las horas efectivamente observadas desde el primer dato disponible.
+> **`hf_accumulated` es siempre confiable** — nunca es negativo, refleja las horas observadas desde el primer dato disponible.
+
+---
+
+### `ubi_chill_portions` — Porciones frío Modelo Dinámico
+
+**Propósito:** Calcula y acumula las porciones frío según el Modelo Dinámico (Erez & Fishman 1990) hora a hora por sector. A diferencia de HF y Utah, la temporada parte el **1 de enero** de cada año calendario — porque las temperaturas de verano ya inician el estado bioquímico del modelo.
+
+Se actualiza con `refresh_ubi_chill_portions()` tras cada sync exitoso de Ubibot.
+
+**Registros:** ~250.700 | **Años calendario:** 2024, 2025, 2026
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | integer | Clave primaria |
+| `channel_id` | integer | ID del dispositivo Ubibot |
+| `channel_name` | varchar | Nombre del dispositivo |
+| `field_sector_id` | integer | FK a `field_sectors.id` |
+| `field` | text | Campo |
+| `irrigation_sector` | text | Sector de riego |
+| `orchard` | text | Cuartel |
+| `crop_type` | text | Tipo de cultivo |
+| `date` | date | Fecha |
+| `hour` | time | Hora |
+| `temperature` | numeric | Temperatura ambiente (°C) |
+| `dm_season` | varchar(4) | Año calendario: `'2024'`, `'2025'`, `'2026'` — parte el 1 de enero |
+| `dm_state` | numeric | Estado interno del modelo (fracción de moléculas entre 0 y 1) |
+| `dm_value` | numeric | Porciones generadas en esta hora (0 o entero positivo) |
+| `dm_accumulated` | numeric | Porciones acumuladas desde el **1 de enero** del año |
+
+**Restricción única:** `(channel_id, field_sector_id, date, hour)`
+
+#### Modelo Dinámico (Erez & Fishman 1990)
+
+El más preciso para estimar requerimientos de frío. Estándar internacional adoptado en Chile para cerezos y ciruelos. Simula el comportamiento bioquímico de la planta: el frío activa moléculas inductoras del reposo; el calor las destruye. Una porción se cuenta cada vez que el estado interno (fracción de moléculas activas) cruza el umbral 1.
+
+**Constantes del modelo:**
+
+| Parámetro | Valor | Descripción |
+|-----------|-------|-------------|
+| E1 | 4.150 | Energía de activación (formación) |
+| E5 | 1.6 | Estado de equilibrio base |
+| E6 | 277 K | Temperatura óptima (3.85°C) |
+| E7 | 5.43×10⁻¹⁴ | Coeficiente preexponencial |
+| E8 | 8.740 | Energía de activación (tasa de transición) |
+
+**Fórmulas por hora:**
+```
+T_K         = temperatura + 273.16
+ftmprt      = E7 × exp(E8 / T_K)                       ← tasa de transición
+xs          = E5 / (1 + exp(-E1 × (1/E6 - 1/T_K)))     ← equilibrio
+state_nuevo = state + (xs - state) × (1 - exp(-ftmprt))
+porcion     = FLOOR(state_nuevo)    ← parte entera = porciones ganadas esta hora
+state       = state_nuevo - porcion ← parte decimal continúa al próximo ciclo
+```
+
+**Función SQL:** `calc_dm_portions(channel_id, field_sector_id, dm_season)` — recorre todas las horas del año calendario en secuencia, manteniendo el estado entre horas.
+
+#### Por qué la temporada empieza el 1/enero
+
+El modelo dinámico es continuo: el estado bioquímico de verano (altas temperaturas, estado interno bajo) es el punto de partida del invierno siguiente. Si se iniciara en mayo partiendo de 0, se perdería la información acumulada en verano y las primeras porciones de otoño quedarían subestimadas.
+
+En la práctica, el modelo genera pocas o ninguna porción en enero-abril (temperaturas de verano demasiado altas), pero ese estado bioquímico es necesario para calcular correctamente el otoño e invierno siguientes.
+
+#### Ejemplo de uso
+
+```sql
+-- Porciones frío al 31/julio 2025 por cuartel (desde 1/enero 2025)
+SELECT field, orchard,
+    MAX(dm_accumulated)::int AS porciones_frio
+FROM ubi_chill_portions
+WHERE dm_season = '2025'
+  AND date <= '2025-07-31'
+GROUP BY field, orchard
+ORDER BY field, orchard;
+
+-- Curva diaria de porciones acumuladas (para gráfico)
+SELECT date, MAX(dm_accumulated) AS dm_acum
+FROM ubi_chill_portions
+WHERE field_sector_id = 13 AND dm_season = '2025'
+GROUP BY date ORDER BY date;
+
+-- Detalle hora a hora (equivalente planilla "PF 2025 IVU")
+SELECT date, hour, temperature, dm_state, dm_value, dm_accumulated
+FROM ubi_chill_portions
+WHERE channel_id = 80646 AND field_sector_id = 18
+  AND dm_season = '2025'
+ORDER BY date, hour;
+```
+
+#### Porciones frío al 31/julio 2025 — todos los cuarteles
+
+| Campo | Cuartel | Porciones DM (1/ene–31/jul 2025) |
+|-------|---------|----------------------------------|
+| ISLA DE MAIPO | CEREZOS GLOW 2023 CC-426 | 295 |
+| ISLA DE MAIPO | CEREZOS RAINIER 2023 CC-431 | 380 |
+| ISLA DE MAIPO | CEREZOS RED PACIFIC CC-421 | 287 |
+| ISLA DE MAIPO | CEREZOS SANTINA 2023 CC-424 | 37 ⚠️ |
+| ISLA DE MAIPO | CEREZOS SWEET ARYANA 2023 CC-422 | 269 |
+| ZUÑIGA | CEREZOS LAPINS 2014 CC-881 | 364 |
+| ZUÑIGA | CEREZOS LAPINS 2015 CC-884 | 365 |
+| ZUÑIGA | CEREZOS RAINIER 2015 CC-882 | 365 |
+| ZUÑIGA | CEREZOS SANTINA 2014 CC-883 | 366 |
+| ZUÑIGA | CEREZOS SANTINA 2018 CC-895 | 302 |
+| ZUÑIGA | CEREZOS SANTINA 2019 CC-892 | 423 |
+| ZUÑIGA | CEREZOS SANTINA 2020 CC-899 | 435 |
+| ZUÑIGA | CIRUELOS ADULTOS CC-860 | 376 |
+
+> ⚠️ **CEREZOS SANTINA 2023 CC-424** (Isla de Maipo): solo 37 porciones — el canal tiene datos muy parciales para 2025. Confirmar con equipo de campo.
 
 ---
 
@@ -1398,8 +1393,9 @@ ORDER BY date, hour;
 | `wc_zones_sensors` | ~313.000 | ago 2024 → hoy |
 | `wc_farms_realirrigation` | ~6.700 | dic 2023 → hoy |
 | `wc_farms_irrigation` | ~6.200 | dic 2023 → hoy |
-| `wc_kc_daily` | ~4.900 | oct 2024 → hoy |
-| `ubi_chill_hours` | ~243.000 | may 2024 → hoy |
+| `wc_kc_weekly` | ~580 | ago 2025 → hoy |
+| `ubi_chill_hours` | ~250.000 | may 2024 → hoy |
+| `ubi_chill_portions` | ~250.700 | ene 2024 → hoy |
 | `execution_log` | ~12.500 | jun 2024 → hoy |
 | `field_sectors` | 22 | — |
 | `wc_farms_zones` | 24 | — |

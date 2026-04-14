@@ -74,13 +74,15 @@ def main():
             db.session.execute(db.text("SELECT refresh_ubi_ambient_temperature()"))
             db.session.execute(db.text("SELECT refresh_ubi_soil_sensors()"))
             db.session.execute(db.text("SELECT refresh_ubi_chill_hours()"))
+            db.session.execute(db.text("SELECT refresh_ubi_chill_portions()"))
             db.session.commit()
-            logging.info("ubi_sensor_pivot, ubi_ambient_temperature, ubi_soil_sensors and ubi_chill_hours refreshed")
+            logging.info("ubi_sensor_pivot, ubi_ambient_temperature, ubi_soil_sensors, ubi_chill_hours and ubi_chill_portions refreshed")
 
         if status_wiseconn and status_wiseconn.startswith("Success"):
-            db.session.execute(db.text("SELECT refresh_wc_kc_daily()"))
+            db.session.execute(db.text("SELECT refresh_wc_kc_weekly()"))
+            db.session.execute(db.text("SELECT refresh_wc_ema()"))
             db.session.commit()
-            logging.info("wc_kc_daily refreshed")
+            logging.info("wc_kc_weekly and wc_ema refreshed")
 
         # Always log execution status
         log = ExecutionLog(
