@@ -74,18 +74,43 @@ def generate_farm_endpoints(farms_data):
             "process_function": process_data_measures
         }
 
+# EMA sensors require daily aggregation instead of a single snapshot.
+# MAX for instantaneous sensors (radiation, gusts), AVG for continuous ones.
+EMA_SENSOR_AGGREGATION = {
+    "Radiacion Solar - EMA":     "MAX",
+    "Rafaga de Viento - EMA":    "MAX",
+    "Pluviometría - EMA":        "MAX",
+    "Temperatura - EMA":         "AVG",
+    "Humedad Relativa - EMA":    "AVG",
+    "Presión Atmosférica - EMA": "AVG",
+    "Velocidad Viento - EMA":    "AVG",
+    "Dirección Viento - EMA":    "AVG",
+}
+
+
+def _aggregate_yesterday(values, method):
+    """Return the aggregated value for yesterday from a list of {date, value} dicts."""
+    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    day_values = [v["value"] for v in values if v.get("date") == yesterday and v.get("value") is not None]
+    if not day_values:
+        return None
+    if method == "MAX":
+        return max(day_values)
+    return sum(day_values) / len(day_values)  # AVG
+
+
 def run_fetch_process():
     results = []
     status_wiseconn = "Success"
     combined_data = []
 
     try:
-        
+
         farms_data = fetch_data("farms")
         if farms_data:
-            generate_farm_endpoints(farms_data) 
+            generate_farm_endpoints(farms_data)
 
-        
+
         for measure_type in [key for key in endpoints_config.keys() if key.startswith("measures_")]:
             measures_data = fetch_data(measure_type)
             if measures_data:
@@ -102,24 +127,34 @@ def run_fetch_process():
                             None
                         )
                         if matching_measure:
-                            # Use yesterday's value — sensor_data returns [yesterday, today].
-                            # today's value is the partial intraday accumulation (resets at 00:00 UTC).
-                            # yesterday's value is the fully closed daily accumulation.
                             yesterday_date = datetime.date.today() - datetime.timedelta(days=1)
-                            yesterday_value = next(
-                                (v for v in processed_sensor_data["values"]
-                                 if v.get("date") == yesterday_date),
-                                None
-                            )
-                            # Fall back to last available if yesterday not found
-                            target_value = yesterday_value or (
-                                processed_sensor_data["values"][-1]
-                                if processed_sensor_data["values"] else None
-                            )
-                            matching_measure["values"] = target_value["value"] if target_value else None
-                            matching_measure["created_at"] = target_value.get("created_at", None) if target_value else None
-                            matching_measure["date"] = target_value.get("date", None) if target_value else None
-                            matching_measure["hour"] = target_value.get("hour", None) if target_value else None
+                            sensor_name = matching_measure.get("name", "")
+                            agg_method = EMA_SENSOR_AGGREGATION.get(sensor_name)
+
+                            if agg_method:
+                                # EMA sensor: aggregate all 15-min records for yesterday
+                                agg_value = _aggregate_yesterday(processed_sensor_data["values"], agg_method)
+                                matching_measure["values"] = agg_value
+                                matching_measure["date"] = yesterday_date
+                                matching_measure["hour"] = datetime.time(0, 0, 0)
+                                matching_measure["created_at"] = datetime.datetime.combine(yesterday_date, datetime.time(0, 0, 0))
+                            else:
+                                # Non-EMA sensor: use yesterday's snapshot value (fully closed day)
+                                yesterday_value = next(
+                                    (v for v in processed_sensor_data["values"]
+                                     if v.get("date") == yesterday_date),
+                                    None
+                                )
+                                # Fall back to last available if yesterday not found
+                                target_value = yesterday_value or (
+                                    processed_sensor_data["values"][-1]
+                                    if processed_sensor_data["values"] else None
+                                )
+                                matching_measure["values"] = target_value["value"] if target_value else None
+                                matching_measure["created_at"] = target_value.get("created_at", None) if target_value else None
+                                matching_measure["date"] = target_value.get("date", None) if target_value else None
+                                matching_measure["hour"] = target_value.get("hour", None) if target_value else None
+
                             matching_measure["farm_id"] = farmId
                             combined_data.append(matching_measure)
 
