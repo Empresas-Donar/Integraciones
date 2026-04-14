@@ -30,6 +30,7 @@ Este documento explica qué datos recopila el sistema, de dónde vienen, cómo s
   - [`ubi_ambient_temperature` — Temperatura ambiente horaria](#ubi_ambient_temperature--temperatura-ambiente-horaria)
   - [`ubi_soil_sensors` — Temperatura y humedad del suelo](#ubi_soil_sensors--temperatura-y-humedad-del-suelo-horaria)
   - [`ubi_chill_hours` — Horas frío por sector y temporada](#ubi_chill_hours--horas-frío-por-sector-y-temporada)
+  - [`wc_ema` — Clima diario de la Estación Meteorológica Automática](#wc_ema--clima-diario-de-la-estación-meteorológica-automática)
     - [Modelo HF](#modelo-horas-frío-hf--el-más-simple)
     - [Modelo Utah](#modelo-utah-porciones-frío--intermedio)
     - [Grados Día (GDA)](#grados-día-acumulados-gda)
@@ -81,6 +82,8 @@ field_sectors  (tabla maestra — conecta todo)
                                       ├──▶ ubi_sensor_pivot        (pivot para reportes — 20 sensores como columnas)
                                       ├──▶ ubi_chill_hours         (HF, Utah, GDA — season desde 1/mayo)
                                       └──▶ ubi_chill_portions      (Modelo Dinámico — season desde 1/enero)
+
+wc_ema         (clima diario EMA/Davis — temperatura, humedad, radiación, viento, lluvia)
 
 execution_log  (registro de cada ejecución del sistema)
 ```
@@ -1381,6 +1384,97 @@ ORDER BY date, hour;
 
 ---
 
+### `wc_ema` — Clima diario de la Estación Meteorológica Automática
+
+**Propósito:** Una fila por día y predio con los valores climáticos de la EMA (Estación Meteorológica Automática Davis), correctamente agregados desde los registros de 15 minutos de la API de Wiseconn.
+
+Se actualiza con `refresh_wc_ema()` tras cada sync exitoso de Wiseconn.
+
+#### ¿Por qué existe esta tabla?
+
+`wc_zones_sensors` almacena solo el **último valor del día** (snapshot de medianoche) para cada sensor. Para sensores climáticos esto es incorrecto: la radiación solar a medianoche siempre es 0, el viento puede ser 0 a esa hora, etc. `wc_ema` resuelve esto bajando los 96 registros de 15 min del día y aplicando la agregación correcta por sensor.
+
+#### Cobertura
+
+| Predio | Desde | Días disponibles | Estación |
+|--------|-------|-----------------|---------|
+| ZUÑIGA | 2024-10-27 | ~508 | Davis Envoy — sensores nombrados `* - EMA` |
+| ISLA DE MAIPO | 2025-03-31 | ~342 | Davis API — sensores nombrados `* Davis API` |
+
+#### Columnas
+
+| Columna | Tipo | Unidad | Agregación | Fuente Zuñiga | Fuente Isla de Maipo |
+|---------|------|--------|-----------|--------------|---------------------|
+| `id` | SERIAL PK | — | — | — | — |
+| `date` | DATE | — | — | clave | clave |
+| `farm_id` | VARCHAR | — | — | `14245` | `60544` |
+| `field` | TEXT | — | — | `ZUÑIGA` | `ISLA DE MAIPO` |
+| `temperatura_c` | DOUBLE | °C | AVG diario | `Temperatura - EMA` | `Temperatura Davis API` |
+| `humedad_relativa_pct` | DOUBLE | % | AVG diario | `Humedad Relativa - EMA` | `Humedad Relativa Davis API` |
+| `presion_atmosferica_pa` | DOUBLE | Pa | AVG diario | `Presión Atmosférica - EMA` | `Presion Davis API` |
+| `radiacion_solar_wm2` | DOUBLE | W/m² | MAX diario | `Radiacion Solar - EMA` | `Radiación Davis API` |
+| `pluviometria_mm` | DOUBLE | mm | MAX diario | `Pluviometría - EMA` | `Lluvia Davis API` |
+| `velocidad_viento_kmh` | DOUBLE | km/h | AVG diario | `Velocidad Viento - EMA` | `Viento Davis API` |
+| `rafaga_viento_kmh` | DOUBLE | km/h | MAX diario | `Rafaga de Viento - EMA` | `Ráfaga Davis API` |
+| `direccion_viento_deg` | DOUBLE | ° | AVG diario | `Dirección Viento - EMA` | `Direccion Viento Davis API` |
+
+> **Constraint:** `UNIQUE (date, farm_id)` — un registro por día y predio.
+
+#### ¿Qué se puede hacer con esta tabla?
+
+| Consulta | Columnas |
+|----------|---------|
+| Temperatura promedio/mín/máx mensual por predio | `temperatura_c`, `date`, `field` |
+| Radiación solar acumulada por período | `radiacion_solar_wm2`, `date` |
+| Días con lluvia y precipitación acumulada | `pluviometria_mm`, `date` |
+| Comparar condiciones climáticas entre Zuñiga e Isla de Maipo | `field`, todos los sensores |
+| Correlacionar clima con Kc semanal | JOIN con `wc_kc_weekly` por `farm_id` y semana |
+
+#### Calidad de datos conocida
+
+| Sensor | Zuñiga | Isla de Maipo |
+|--------|--------|--------------|
+| Temperatura | ✅ Confiable | ✅ Confiable |
+| Humedad relativa | ✅ Confiable | ✅ Confiable |
+| Presión atmosférica | ✅ Confiable | ✅ Confiable |
+| Radiación solar | ✅ Confiable | ✅ Confiable |
+| Pluviometría | ⚠️ Subestimado (~60 mm en 16 meses vs ~300 mm/año esperado) | ✅ Aparentemente correcto |
+| Velocidad viento | ❌ Casi siempre 0 — anemómetro no funcional | ✅ Datos reales (avg ~2 km/h) |
+| Ráfaga viento | ❌ Dañado desde 30-mar-2025 — valor fijo 410 km/h | ✅ Datos reales (max ~35 km/h) |
+
+#### Ejemplos de uso
+
+```sql
+-- Temperatura mensual por predio en 2025
+SELECT
+  field,
+  TO_CHAR(date, 'YYYY-MM') AS mes,
+  ROUND(AVG(temperatura_c)::numeric, 1) AS temp_avg,
+  ROUND(MIN(temperatura_c)::numeric, 1) AS temp_min,
+  ROUND(MAX(temperatura_c)::numeric, 1) AS temp_max
+FROM wc_ema
+WHERE date BETWEEN '2025-01-01' AND '2025-12-31'
+GROUP BY field, mes
+ORDER BY field, mes;
+
+-- Radiación solar máxima mensual comparada entre predios
+SELECT
+  TO_CHAR(date, 'YYYY-MM') AS mes,
+  ROUND(MAX(radiacion_solar_wm2) FILTER (WHERE field = 'ZUÑIGA')::numeric, 0)        AS rad_zuniga,
+  ROUND(MAX(radiacion_solar_wm2) FILTER (WHERE field = 'ISLA DE MAIPO')::numeric, 0) AS rad_imaipo
+FROM wc_ema
+GROUP BY mes
+ORDER BY mes;
+
+-- Días con lluvia registrada
+SELECT date, field, pluviometria_mm
+FROM wc_ema
+WHERE pluviometria_mm > 0
+ORDER BY date DESC;
+```
+
+---
+
 ## Resumen de volumen de datos
 
 | Tabla | Registros | Rango disponible |
@@ -1394,6 +1488,7 @@ ORDER BY date, hour;
 | `wc_farms_realirrigation` | ~6.700 | dic 2023 → hoy |
 | `wc_farms_irrigation` | ~6.200 | dic 2023 → hoy |
 | `wc_kc_weekly` | ~580 | ago 2025 → hoy |
+| `wc_ema` | ~850 (508 Zuñiga + 342 Isla de Maipo) | oct 2024 → hoy |
 | `ubi_chill_hours` | ~250.000 | may 2024 → hoy |
 | `ubi_chill_portions` | ~250.700 | ene 2024 → hoy |
 | `execution_log` | ~12.500 | jun 2024 → hoy |
