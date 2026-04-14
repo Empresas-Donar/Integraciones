@@ -29,13 +29,10 @@ Este documento explica qué datos recopila el sistema, de dónde vienen, cómo s
   - [`wc_kc_weekly` — Kc semanal por sector](#wc_kc_weekly--kc-semanal-por-sector)
   - [`ubi_ambient_temperature` — Temperatura ambiente horaria](#ubi_ambient_temperature--temperatura-ambiente-horaria)
   - [`ubi_soil_sensors` — Temperatura y humedad del suelo](#ubi_soil_sensors--temperatura-y-humedad-del-suelo-horaria)
-  - [`ubi_chill_hours` — Horas frío por sector y temporada](#ubi_chill_hours--horas-frío-por-sector-y-temporada)
+  - [`ubi_chill_hours` y `ubi_chill_portions` — Frío y calor acumulado](#ubi_chill_hours-y-ubi_chill_portions--frío-y-calor-acumulado)
+    - [`ubi_chill_hours` — Horas frío, Utah y Grados Día](#ubi_chill_hours--horas-frío-utah-y-grados-día)
+    - [`ubi_chill_portions` — Porciones frío Modelo Dinámico](#ubi_chill_portions--porciones-frío-modelo-dinámico)
   - [`wc_ema` — Clima diario de la Estación Meteorológica Automática](#wc_ema--clima-diario-de-la-estación-meteorológica-automática)
-    - [Modelo HF](#modelo-horas-frío-hf--el-más-simple)
-    - [Modelo Utah](#modelo-utah-porciones-frío--intermedio)
-    - [Grados Día (GDA)](#grados-día-acumulados-gda)
-  - [`ubi_chill_portions` — Porciones frío Modelo Dinámico](#ubi_chill_portions--porciones-frío-modelo-dinámico)
-    - [Modelo Dinámico](#modelo-dinámico-erez--fishman-1990)
 - [Resumen de volumen de datos](#resumen-de-volumen-de-datos)
 - [Sensores pendientes de confirmar](#sensores-pendientes-de-confirmar)
 
@@ -1135,15 +1132,40 @@ ORDER BY date DESC, hour DESC, orchard;
 
 ---
 
-### `ubi_chill_hours` — Horas frío por sector y temporada
+### `ubi_chill_hours` y `ubi_chill_portions` — Frío y calor acumulado
 
-**Propósito:** Calcula y acumula las horas frío hora a hora por sector usando tres modelos: HF (horas frío clásico), Utah (porciones frío) y GDA (grados día). La temporada de HF y Utah parte el **1 de mayo**; GDA parte el **1 de agosto**.
+El sistema calcula cuatro métricas de frío/calor a partir de la temperatura horaria de cada sensor Ubibot. Están repartidas en **dos tablas** según el período de la temporada que usan:
 
-Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
+| Tabla | Qué mide | Temporada empieza |
+|-------|----------|-------------------|
+| `ubi_chill_hours` | Horas frío (HF), Porciones Utah, Grados Día | **1 de mayo** |
+| `ubi_chill_portions` | Porciones frío Modelo Dinámico | **1 de enero** |
 
-> **Nota:** el Modelo Dinámico (porciones frío Erez & Fishman) vive en la tabla separada `ubi_chill_portions`, cuya temporada parte el **1 de enero**.
+> **¿Por qué dos fechas de inicio?** HF y Utah solo cuentan el invierno, entonces arrancan el 1/mayo cuando empieza el frío. El Modelo Dinámico necesita el historial de verano para funcionar correctamente — su estado bioquímico no puede "reiniciarse" en mayo sin perder información — por eso parte el 1/enero.
 
-**Registros:** ~250.000 | **Temporadas:** 2024-2025, 2025-2026
+#### ¿Qué modelo usar?
+
+| Situación | Modelo recomendado |
+|-----------|-------------------|
+| Comunicación rápida con el equipo de campo | **Horas Frío (HF)** — todo el mundo lo entiende |
+| Decisión de aplicar frío artificial o rompedores de dormancia | **Modelo Dinámico** — el más preciso, estándar internacional |
+| Comparar temporadas o reportar a la empresa | **Modelo Dinámico** — más estable entre años que Utah |
+| Estimar avance fenológico / fecha de cosecha | **Grados Día (GDA)** — mide el calor post-invierno |
+| Temporada 2024-2025 en Isla de Maipo | Solo **HF** — Utah no es confiable (sensores llegaron en julio) |
+
+---
+
+### `ubi_chill_hours` — Horas frío, Utah y Grados Día
+
+**Propósito:** Una fila por hora, sensor y cuartel con la temperatura medida y tres acumulados calculados: horas frío clásico (HF), porciones Utah y grados día (GDA). Los acumulados se reinician el **1 de mayo** para HF/Utah, y el **1 de agosto** para GDA.
+
+Se actualiza automáticamente con `refresh_ubi_chill_hours()` en cada sync de Ubibot.
+
+**Registros:** ~250.000 | **Temporadas disponibles:** `2024-2025`, `2025-2026`
+
+> El Modelo Dinámico (porciones frío más precisas) está en la tabla `ubi_chill_portions`.
+
+#### Columnas
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -1151,138 +1173,112 @@ Se actualiza con `refresh_ubi_chill_hours()` tras cada sync exitoso de Ubibot.
 | `channel_id` | integer | ID del dispositivo Ubibot |
 | `channel_name` | varchar | Nombre del dispositivo |
 | `field_sector_id` | integer | FK a `field_sectors.id` |
-| `field` | text | Campo |
-| `irrigation_sector` | text | Sector de riego |
-| `orchard` | text | Cuartel |
-| `crop_type` | text | Tipo de cultivo |
+| `field` | text | `ZUÑIGA` o `ISLA DE MAIPO` |
+| `irrigation_sector` | text | Sector de riego (ej: `Sector 2 EQ 2 (Lap14)`) |
+| `orchard` | text | Cuartel (ej: `CEREZOS LAPINS 2014 CC-881`) |
+| `crop_type` | text | `CEREZOS` o `CIRUELOS` |
 | `date` | date | Fecha |
-| `hour` | time | Hora |
-| `temperature` | numeric | Temperatura ambiente (°C) |
-| `hf_value` | smallint | **Horas frío:** `1` si temp ≤ 7.2°C, `0` si no |
-| `hf_accumulated` | integer | HF acumuladas desde el **1 de mayo** de la temporada |
-| `utah_value` | numeric | **Modelo Utah:** peso según rango de temperatura (puede ser negativo) |
-| `utah_accumulated` | numeric | Porciones Utah acumuladas desde el **1 de mayo** |
-| `season` | varchar | Temporada HF/Utah (mayo–abril): `2024-2025` o `2025-2026` |
-| `gda_value` | numeric | Calor útil por hora: `MAX(temp - 7, 0) / 24` |
-| `gda_accumulated` | numeric | GDA acumulados desde el **1 de agosto** de la temporada |
-| `gda_season` | varchar | Temporada GDA (agosto–julio): `2024-2025` o `2025-2026` |
-| `rn` | integer | Número de fila dentro de la partición (uso interno) |
+| `hour` | time | Hora (00:00 a 23:00) |
+| `temperature` | numeric | Temperatura ambiente en °C |
+| `hf_value` | smallint | `1` si temp ≤ 7.2°C, `0` si no |
+| `hf_accumulated` | integer | **Horas frío acumuladas** desde el 1/mayo — nunca baja de 0 |
+| `utah_value` | numeric | Peso Utah de esta hora (puede ser negativo si hay calor) |
+| `utah_accumulated` | numeric | **Porciones Utah acumuladas** desde el 1/mayo — puede ser negativo |
+| `season` | varchar | Temporada HF/Utah: `2024-2025` o `2025-2026` (mayo → abril) |
+| `gda_value` | numeric | Calor de esta hora: `MAX(temp − 7, 0) / 24` |
+| `gda_accumulated` | numeric | **Grados día acumulados** desde el 1/agosto de la temporada |
+| `gda_season` | varchar | Temporada GDA: `2024-2025` o `2025-2026` (agosto → julio) |
+| `rn` | integer | Número de orden dentro de la temporada (uso interno) |
 
-**Restricción única:** `(channel_id, field_sector_id, date, hour)` — un registro por sensor, sector y hora.
+**Restricción única:** `(channel_id, field_sector_id, date, hour)`
 
-#### Los tres modelos en esta tabla
+#### Cómo se calcula cada modelo
 
-| Modelo | Columnas | Período | Uso |
-|--------|----------|---------|-----|
-| **Horas Frío (HF)** | `hf_value`, `hf_accumulated` | 1 mayo → 30 abril | Simple, siempre confiable |
-| **Porciones Frío Utah** | `utah_value`, `utah_accumulated` | 1 mayo → 30 abril | Más preciso que HF, puede ser negativo |
-| **Grados Día (GDA)** | `gda_value`, `gda_accumulated` | 1 agosto → 31 julio | Mide calor acumulado post-invierno |
+**Modelo Horas Frío (HF)**
 
-#### Modelo Horas Frío (HF) — el más simple
-
-Desarrollado en la década de 1950, es el más antiguo y fácil de entender. Parte de la observación empírica de que los frutales necesitan un número mínimo de horas bajo 7.2°C para salir correctamente del reposo invernal (dormancia).
-
-**Lógica:** cada hora con temperatura ≤ 7.2°C suma 1 HF; cualquier hora sobre ese umbral suma 0. No distingue entre una hora a 1°C y una a 7°C — ambas cuentan igual. Tampoco penaliza el calor.
-
-**Cuándo usarlo:** referencia rápida, comparación entre temporadas, comunicación con el equipo de campo. Es el modelo que más se entiende intuitivamente.
-
-**Limitación:** sobreestima la eficiencia del frío muy intenso (bajo 2°C) y no considera que el calor diurno puede revertir el efecto del frío nocturno.
+El más simple. Cada hora con temperatura ≤ 7.2°C suma 1; el resto suma 0. No distingue entre 1°C y 7°C, ni penaliza el calor. Sirve como referencia rápida y nunca arroja valores negativos.
 
 ```
 hf_value = 1  si temperatura ≤ 7.2°C
 hf_value = 0  si temperatura > 7.2°C
-hf_accumulated = suma de hf_value desde el 1 de mayo
+hf_accumulated: suma acumulada desde el 1 de mayo
 ```
 
-#### Modelo Utah (Porciones Frío) — intermedio
+**Modelo Utah (Porciones Frío)**
 
-Desarrollado por Richardson et al. (1974) en la Universidad de Utah, EE.UU. Mejora el modelo HF reconociendo que no todas las temperaturas frías son igual de efectivas, y que el calor puede **destruir** el frío ya acumulado.
+Más sofisticado que HF: reconoce que el frío muy intenso (<2°C) es menos efectivo, y que el calor diurno **destruye** frío ya acumulado. El rango óptimo de vernalización es 2.5–9.1°C.
 
-**Lógica:** asigna un peso diferente a cada rango de temperatura. El rango óptimo (2.5–9.1°C) suma 1 porción por hora. Temperaturas muy bajas o muy altas tienen peso reducido o negativo. Si durante el día la temperatura supera los 18°C, se restan porciones del acumulado.
+| Rango °C | Peso |
+|----------|------|
+| ≤ 1.4 | 0 |
+| 1.5 – 2.4 | +0.5 |
+| 2.5 – 9.1 | **+1** |
+| 9.2 – 12.4 | +0.5 |
+| 12.5 – 15.9 | 0 |
+| 16.0 – 18.0 | −0.5 |
+| > 18.0 | **−1** |
 
-| Rango °C | Peso | Interpretación |
-|----------|------|----------------|
-| ≤ 1.4 | 0 | Demasiado frío — no es efectivo |
-| 1.5 – 2.4 | +0.5 | Frío leve |
-| 2.5 – 9.1 | **+1** | Zona óptima de vernalización |
-| 9.2 – 12.4 | +0.5 | Frío moderado |
-| 12.5 – 15.9 | 0 | Temperatura neutra |
-| 16.0 – 18.0 | -0.5 | Calor leve — empieza a revertir |
-| > 18.0 | **-1** | Calor — deshace frío acumulado |
+`utah_accumulated` puede volverse negativo si hay olas de calor antes de que el invierno acumule suficiente. Esto ocurre normalmente si el sensor empezó a registrar en julio (verano → resta) en lugar de mayo.
 
-**Cuándo usarlo:** es el modelo más usado en Chile para decisiones de manejo (aplicación de frío artificial, timing de rompedores de dormancia). Más preciso que HF en zonas con inviernos templados como Chile Central.
+**Grados Día (GDA)**
 
-**Limitación:** el acumulado puede volverse negativo si hay olas de calor al inicio de la temporada. En temporadas donde el sensor empezó a registrar tarde (ej: julio en lugar de mayo), el acumulado Utah no es confiable.
+Mide el **calor acumulado** desde el 1/agosto — lo opuesto al frío. A mayor GDA, más avanzado el desarrollo del cultivo (brotación, floración, madurez). Se usa para estimar fechas de cosecha y comparar velocidad de desarrollo entre cuarteles.
 
-#### Grados Día Acumulados (GDA)
-
-Métrica opuesta a las horas frío — mide el **calor acumulado** post-invierno. No mide frío sino el avance fenológico una vez terminado el reposo. A mayor GDA, más avanzado el desarrollo del cultivo (brotación, floración, madurez).
-
-**Cuándo usarlo:** estimar fecha de cosecha, comparar velocidad de desarrollo entre cuarteles y temporadas, calibrar modelos fenológicos.
-
-- **Base:** 7°C (temperatura mínima de crecimiento para cerezos/ciruelos en Chile)
-- **Fórmula por hora:** `MAX(temp - 7, 0) / 24`
-- **Período:** desde el **1 de agosto** de cada temporada (inicio del calor primaveral)
+- Base: 7°C (umbral mínimo de crecimiento para cerezos/ciruelos)
+- Fórmula por hora: `MAX(temperatura − 7, 0) / 24`
+- Valores de referencia temporada 2024-2025: ~3.000–3.300 GDA en Zuñiga
 
 ```
 Hora a 25°C → GDA = (25-7)/24 = 0.75
 Hora a 10°C → GDA = (10-7)/24 = 0.125
-Hora a  5°C → GDA = 0  (bajo la base, no aporta)
+Hora a  5°C → GDA = 0  (no aporta)
 ```
 
-Valores de referencia temporada 2024-2025 (agosto→abril): ~3.000–3.300 GDA en Zuñiga.
-
-#### Ejemplo de uso
+#### Consultas de referencia
 
 ```sql
--- Horas frío y Utah acumuladas al 31/jul 2025 por cuartel (1/mayo → 31/jul)
+-- Horas frío y Utah al 31/julio por cuartel (temporada actual)
 SELECT field, orchard,
     MAX(hf_accumulated)   AS horas_frio,
-    MAX(utah_accumulated) AS utah_acum
+    MAX(utah_accumulated) AS utah
 FROM ubi_chill_hours
 WHERE season = '2025-2026'
   AND date <= '2025-07-31'
 GROUP BY field, orchard
 ORDER BY field, orchard;
 
--- Curva diaria de HF y Utah por sector (para gráfico)
+-- Curva diaria de acumulación por sector (para gráfico)
 SELECT date,
-    MAX(hf_accumulated)   AS hf_acum,
-    MAX(utah_accumulated) AS utah_acum,
-    MAX(gda_accumulated)  AS gda_acum
+    MAX(hf_accumulated)   AS hf,
+    MAX(utah_accumulated) AS utah,
+    MAX(gda_accumulated)  AS gda
 FROM ubi_chill_hours
 WHERE field_sector_id = 13 AND season = '2025-2026'
 GROUP BY date ORDER BY date;
-
--- Temporada completa HF y GDA por sector
-SELECT field, orchard,
-    MAX(hf_accumulated)   AS hf_temporada,
-    MAX(gda_accumulated)  AS gda_temporada
-FROM ubi_chill_hours
-WHERE season = '2025-2026'
-GROUP BY field, orchard
-ORDER BY field, orchard;
 ```
 
-#### Observaciones de calidad de datos
+#### Calidad de datos
 
-> **`utah_accumulated` — confiabilidad según temporada:**
->
-> - **Temporada 2025-2026:** todos los sensores tienen datos desde el 1 de mayo 2025 → `utah_accumulated` es **confiable**.
-> - **Temporada 2024-2025 — Zuñiga** (Sector 1 EQ 2, Sector 1 EQ 3, Sector 3 EQ 2): datos desde mayo 2024 → `utah_accumulated` **confiable**.
-> - **Temporada 2024-2025 — Isla de Maipo** y varios de Zuñiga: datos desde **julio-agosto 2024**, no desde mayo → `utah_accumulated` **no confiable** para esa temporada (el verano siguiente resta sin haber acumulado el invierno completo). Usar solo `hf_accumulated` en esos casos.
->
-> **`hf_accumulated` es siempre confiable** — nunca es negativo, refleja las horas observadas desde el primer dato disponible.
+| Situación | `hf_accumulated` | `utah_accumulated` |
+|-----------|-----------------|-------------------|
+| Sensor desde 1/mayo (cualquier año) | ✅ confiable | ✅ confiable |
+| Sensor llegó en julio-agosto 2024 (mayoría Isla de Maipo y varios Zuñiga) | ✅ confiable (solo refleja lo observado) | ⚠️ no confiable — el verano siguiente resta sin haber acumulado el invierno |
+
+**Regla práctica:** para temporada `2024-2025` en Isla de Maipo, usar solo `hf_accumulated`. Para temporada `2025-2026` todos los sensores arrancan desde el 1/mayo, así que Utah también es confiable.
 
 ---
 
 ### `ubi_chill_portions` — Porciones frío Modelo Dinámico
 
-**Propósito:** Calcula y acumula las porciones frío según el Modelo Dinámico (Erez & Fishman 1990) hora a hora por sector. A diferencia de HF y Utah, la temporada parte el **1 de enero** de cada año calendario — porque las temperaturas de verano ya inician el estado bioquímico del modelo.
+**Propósito:** Una fila por hora, sensor y cuartel con las porciones frío calculadas según el Modelo Dinámico de Erez & Fishman (1990). Es el modelo más preciso disponible para estimar requerimientos de frío en cerezos y ciruelos, y el estándar internacional adoptado en Chile.
 
-Se actualiza con `refresh_ubi_chill_portions()` tras cada sync exitoso de Ubibot.
+La temporada parte el **1 de enero** de cada año calendario (no el 1/mayo como HF y Utah).
 
-**Registros:** ~250.700 | **Años calendario:** 2024, 2025, 2026
+Se actualiza automáticamente con `refresh_ubi_chill_portions()` en cada sync de Ubibot.
+
+**Registros:** ~250.700 | **Años disponibles:** `2024`, `2025`, `2026`
+
+#### Columnas
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
@@ -1290,56 +1286,40 @@ Se actualiza con `refresh_ubi_chill_portions()` tras cada sync exitoso de Ubibot
 | `channel_id` | integer | ID del dispositivo Ubibot |
 | `channel_name` | varchar | Nombre del dispositivo |
 | `field_sector_id` | integer | FK a `field_sectors.id` |
-| `field` | text | Campo |
+| `field` | text | `ZUÑIGA` o `ISLA DE MAIPO` |
 | `irrigation_sector` | text | Sector de riego |
 | `orchard` | text | Cuartel |
-| `crop_type` | text | Tipo de cultivo |
+| `crop_type` | text | `CEREZOS` o `CIRUELOS` |
 | `date` | date | Fecha |
-| `hour` | time | Hora |
-| `temperature` | numeric | Temperatura ambiente (°C) |
-| `dm_season` | varchar(4) | Año calendario: `'2024'`, `'2025'`, `'2026'` — parte el 1 de enero |
-| `dm_state` | numeric | Estado interno del modelo (fracción de moléculas entre 0 y 1) |
-| `dm_value` | numeric | Porciones generadas en esta hora (0 o entero positivo) |
-| `dm_accumulated` | numeric | Porciones acumuladas desde el **1 de enero** del año |
+| `hour` | time | Hora (00:00 a 23:00) |
+| `temperature` | numeric | Temperatura ambiente en °C |
+| `dm_season` | varchar(4) | Año calendario: `'2024'`, `'2025'`, `'2026'` |
+| `dm_state` | numeric | Estado bioquímico interno del modelo (valor entre 0 y ~1) |
+| `dm_value` | numeric | Porciones ganadas en esta hora (normalmente 0; entero positivo cuando cruza el umbral) |
+| `dm_accumulated` | numeric | **Porciones acumuladas desde el 1 de enero** del año |
 
 **Restricción única:** `(channel_id, field_sector_id, date, hour)`
 
-#### Modelo Dinámico (Erez & Fishman 1990)
+#### Cómo funciona el Modelo Dinámico
 
-El más preciso para estimar requerimientos de frío. Estándar internacional adoptado en Chile para cerezos y ciruelos. Simula el comportamiento bioquímico de la planta: el frío activa moléculas inductoras del reposo; el calor las destruye. Una porción se cuenta cada vez que el estado interno (fracción de moléculas activas) cruza el umbral 1.
+A diferencia de HF (cuenta horas) o Utah (suma pesos), el Modelo Dinámico **simula un proceso bioquímico** dentro de la planta: el frío activa moléculas que inducen el reposo; el calor las destruye. Una porción se acumula cuando el estado interno cruza el umbral de 1 molécula activa — en ese momento el estado se resetea y el contador sube 1.
 
-**Constantes del modelo:**
+Lo importante para el analista:
 
-| Parámetro | Valor | Descripción |
-|-----------|-------|-------------|
-| E1 | 4.150 | Energía de activación (formación) |
-| E5 | 1.6 | Estado de equilibrio base |
-| E6 | 277 K | Temperatura óptima (3.85°C) |
-| E7 | 5.43×10⁻¹⁴ | Coeficiente preexponencial |
-| E8 | 8.740 | Energía de activación (tasa de transición) |
+- **En verano (enero-abril):** el modelo acumula muy pocas o cero porciones — las temperaturas altas destruyen el estado antes de llegar al umbral. Pero el estado bioquímico sigue activo y es necesario para calcular bien el otoño siguiente.
+- **En otoño-invierno (mayo-agosto):** las noches frías empujan el estado hacia arriba; cada vez que cruza 1, suma una porción y el estado vuelve a 0.
+- **`dm_accumulated` parte en 0 el 1/enero** y sube de forma escalonada durante el invierno — los escalones son los momentos en que el modelo "cuenta" una porción nueva.
 
-**Fórmulas por hora:**
-```
-T_K         = temperatura + 273.16
-ftmprt      = E7 × exp(E8 / T_K)                       ← tasa de transición
-xs          = E5 / (1 + exp(-E1 × (1/E6 - 1/T_K)))     ← equilibrio
-state_nuevo = state + (xs - state) × (1 - exp(-ftmprt))
-porcion     = FLOOR(state_nuevo)    ← parte entera = porciones ganadas esta hora
-state       = state_nuevo - porcion ← parte decimal continúa al próximo ciclo
-```
+#### Por qué la temporada empieza el 1/enero y no el 1/mayo
 
-**Función SQL:** `calc_dm_portions(channel_id, field_sector_id, dm_season)` — recorre todas las horas del año calendario en secuencia, manteniendo el estado entre horas.
+Si se iniciara en mayo partiendo de `dm_state = 0`, el modelo perdería el estado bioquímico acumulado en verano. Las primeras noches de otoño encontrarían al modelo "virgen" y subestimarían las porciones de mayo y junio. Al partir el 1/enero, el modelo arranca con el estado real de la planta al comienzo del año.
 
-#### Por qué la temporada empieza el 1/enero
+**Consecuencia práctica:** en enero-abril, `dm_accumulated` es 0 o muy bajo (normal — el verano no acumula frío), pero `dm_state` no es 0 y eso es correcto.
 
-El modelo dinámico es continuo: el estado bioquímico de verano (altas temperaturas, estado interno bajo) es el punto de partida del invierno siguiente. Si se iniciara en mayo partiendo de 0, se perdería la información acumulada en verano y las primeras porciones de otoño quedarían subestimadas.
-
-En la práctica, el modelo genera pocas o ninguna porción en enero-abril (temperaturas de verano demasiado altas), pero ese estado bioquímico es necesario para calcular correctamente el otoño e invierno siguientes.
-
-#### Ejemplo de uso
+#### Consultas de referencia
 
 ```sql
--- Porciones frío al 31/julio 2025 por cuartel (desde 1/enero 2025)
+-- Porciones frío al 31/julio por cuartel (temporada actual, desde 1/enero)
 SELECT field, orchard,
     MAX(dm_accumulated)::int AS porciones_frio
 FROM ubi_chill_portions
@@ -1349,38 +1329,50 @@ GROUP BY field, orchard
 ORDER BY field, orchard;
 
 -- Curva diaria de porciones acumuladas (para gráfico)
-SELECT date, MAX(dm_accumulated) AS dm_acum
+SELECT date, MAX(dm_accumulated) AS porciones
 FROM ubi_chill_portions
 WHERE field_sector_id = 13 AND dm_season = '2025'
 GROUP BY date ORDER BY date;
 
--- Detalle hora a hora (equivalente planilla "PF 2025 IVU")
-SELECT date, hour, temperature, dm_state, dm_value, dm_accumulated
-FROM ubi_chill_portions
-WHERE channel_id = 80646 AND field_sector_id = 18
-  AND dm_season = '2025'
-ORDER BY date, hour;
+-- Resumen combinado: horas frío + porciones dinámicas al 31/julio
+SELECT
+    h.field, h.orchard,
+    MAX(h.hf_accumulated)  AS horas_frio,
+    MAX(p.dm_accumulated)  AS porciones_dm
+FROM ubi_chill_hours h
+JOIN ubi_chill_portions p
+    ON p.channel_id = h.channel_id
+   AND p.field_sector_id = h.field_sector_id
+   AND p.date = h.date AND p.hour = h.hour
+WHERE h.season = '2025-2026'
+  AND p.dm_season = '2025'
+  AND h.date <= '2025-07-31'
+GROUP BY h.field, h.orchard
+ORDER BY h.field, h.orchard;
 ```
 
-#### Porciones frío al 31/julio 2025 — todos los cuarteles
+#### Datos de referencia — temporada 2025 al 31/julio
 
-| Campo | Cuartel | Porciones DM (1/ene–31/jul 2025) |
-|-------|---------|----------------------------------|
-| ISLA DE MAIPO | CEREZOS GLOW 2023 CC-426 | 295 |
-| ISLA DE MAIPO | CEREZOS RAINIER 2023 CC-431 | 380 |
-| ISLA DE MAIPO | CEREZOS RED PACIFIC CC-421 | 287 |
-| ISLA DE MAIPO | CEREZOS SANTINA 2023 CC-424 | 37 ⚠️ |
-| ISLA DE MAIPO | CEREZOS SWEET ARYANA 2023 CC-422 | 269 |
-| ZUÑIGA | CEREZOS LAPINS 2014 CC-881 | 364 |
-| ZUÑIGA | CEREZOS LAPINS 2015 CC-884 | 365 |
-| ZUÑIGA | CEREZOS RAINIER 2015 CC-882 | 365 |
-| ZUÑIGA | CEREZOS SANTINA 2014 CC-883 | 366 |
-| ZUÑIGA | CEREZOS SANTINA 2018 CC-895 | 302 |
-| ZUÑIGA | CEREZOS SANTINA 2019 CC-892 | 423 |
-| ZUÑIGA | CEREZOS SANTINA 2020 CC-899 | 435 |
-| ZUÑIGA | CIRUELOS ADULTOS CC-860 | 376 |
+Porciones frío acumuladas desde el **1 de enero** hasta el **31 de julio de 2025**:
 
-> ⚠️ **CEREZOS SANTINA 2023 CC-424** (Isla de Maipo): solo 37 porciones — el canal tiene datos muy parciales para 2025. Confirmar con equipo de campo.
+| Campo | Cuartel | HF (1/may–31/jul) | Porciones DM (1/ene–31/jul) |
+|-------|---------|:-----------------:|:---------------------------:|
+| ISLA DE MAIPO | CEREZOS GLOW 2023 CC-426 | 91 ⚠️ | 295 |
+| ISLA DE MAIPO | CEREZOS RAINIER 2023 CC-431 | 810 | 380 |
+| ISLA DE MAIPO | CEREZOS RED PACIFIC CC-421 | 823 | 287 |
+| ISLA DE MAIPO | CEREZOS SANTINA 2023 CC-424 | — | 37 ⚠️ |
+| ISLA DE MAIPO | CEREZOS SWEET ARYANA 2023 CC-422 | 722 | 269 |
+| ZUÑIGA | CEREZOS LAPINS 2014 CC-881 | 929 | 364 |
+| ZUÑIGA | CEREZOS LAPINS 2015 CC-884 | 906 | 365 |
+| ZUÑIGA | CEREZOS RAINIER 2015 CC-882 | 906 | 365 |
+| ZUÑIGA | CEREZOS SANTINA 2014 CC-883 | 893 | 366 |
+| ZUÑIGA | CEREZOS SANTINA 2018 CC-895 | 644 | 302 |
+| ZUÑIGA | CEREZOS SANTINA 2019 CC-892 | 876 | 423 |
+| ZUÑIGA | CEREZOS SANTINA 2020 CC-899 | 877 | 435 |
+| ZUÑIGA | CIRUELOS ADULTOS CC-860 | 893 | 376 |
+
+> ⚠️ **CEREZOS GLOW 2023 CC-426:** sensor con datos solo hasta mayo 2025 — HF incompleto.
+> ⚠️ **CEREZOS SANTINA 2023 CC-424:** datos muy parciales durante 2025 — confirmar con campo.
 
 ---
 
