@@ -74,9 +74,11 @@ def generate_farm_endpoints(farms_data):
             "process_function": process_data_measures
         }
 
-# EMA sensors require daily aggregation instead of a single snapshot.
+# EMA/Davis sensors require daily aggregation instead of a single snapshot.
 # MAX for instantaneous sensors (radiation, gusts), AVG for continuous ones.
+# Covers both Zuñiga (- EMA suffix) and Isla de Maipo (Davis API suffix).
 EMA_SENSOR_AGGREGATION = {
+    # Zuñiga — EMA (Davis Envoy)
     "Radiacion Solar - EMA":     "MAX",
     "Rafaga de Viento - EMA":    "MAX",
     "Pluviometría - EMA":        "MAX",
@@ -85,6 +87,15 @@ EMA_SENSOR_AGGREGATION = {
     "Presión Atmosférica - EMA": "AVG",
     "Velocidad Viento - EMA":    "AVG",
     "Dirección Viento - EMA":    "AVG",
+    # Isla de Maipo — Davis API
+    "Radiación Davis API":       "MAX",
+    "Ráfaga Davis API":          "MAX",
+    "Lluvia Davis API":          "MAX",
+    "Temperatura Davis API":     "AVG",
+    "Humedad Relativa Davis API":"AVG",
+    "Presion Davis API":         "AVG",
+    "Viento Davis API":          "AVG",
+    "Direccion Viento Davis API":"AVG",
 }
 
 
