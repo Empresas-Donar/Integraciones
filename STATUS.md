@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 21/04/2026_
+_Actualizado: 22/04/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 21/04/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 21/04/2026 |
-| Días totales | 685 |
-| 🟢 Días OK | 474 (69%) |
+| Período | 06/06/2024 → 22/04/2026 |
+| Días totales | 686 |
+| 🟢 Días OK | 475 (69%) |
 | 🟡 Días parciales | 202 (29%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 13,388 |
+| Total ejecuciones | 13,412 |
 
 ---
 
@@ -53,8 +53,9 @@ _Actualizado: 21/04/2026_
 | 17 | 🟢 | 🟢 `24/24` | 🟢 `13 canales` `15.9°C` | — | — |
 | 18 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `16.3°C` | — | — |
 | 19 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `14.4°C` | — | — |
-| 20 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `10.6°C` | — | — |
-| 21 | 🟡 | 🟡 `8/8` | 🟢 `11 canales` `7.5°C` | — | — |
+| 20 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `10.5°C` | — | — |
+| 21 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `11.9°C` | — | — |
+| 22 | 🟡 | 🟡 `8/8` | 🟢 `11 canales` `6.7°C` | — | — |
 
 ### Marzo 2026
 
