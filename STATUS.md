@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 26/05/2026_
+_Actualizado: 27/05/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 26/05/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 26/05/2026 |
-| Días totales | 720 |
-| 🟢 Días OK | 509 (70%) |
+| Período | 06/06/2024 → 27/05/2026 |
+| Días totales | 721 |
+| 🟢 Días OK | 510 (70%) |
 | 🟡 Días parciales | 202 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 14,205 |
+| Total ejecuciones | 14,229 |
 
 ---
 
@@ -58,8 +58,9 @@ _Actualizado: 26/05/2026_
 | 22 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `6.7°C` | 💧 | — |
 | 23 | 🟢 | 🟢 `24/24` | 🟢 `10 canales` `4.6°C` | 💧 | — |
 | 24 | 🟢 | 🟢 `24/24` | 🟢 `10 canales` `5.5°C` | 💧 | — |
-| 25 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `7.5°C` | 💧 | — |
-| 26 | 🟡 | 🟡 `9/9` | 🟢 `10 canales` `0.9°C` | — | — |
+| 25 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `7.4°C` | 💧 | — |
+| 26 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `9.6°C` | 💧 | — |
+| 27 | 🟡 | 🟡 `9/9` | 🟢 `11 canales` `5.9°C` | — | — |
 
 ### Abril 2026
 
