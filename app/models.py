@@ -70,8 +70,8 @@ class WCFarmsIrrigation(db.Model):
 class ExecutionLog(db.Model):
     __tablename__ = 'execution_log'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    status_wiseconn = db.Column(db.String(50))
-    status_ubibot = db.Column(db.String(50))
+    status_wiseconn = db.Column(db.String(500))
+    status_ubibot = db.Column(db.String(500))
     date = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.timezone('America/Santiago')))
 
 class WCFarmsRealIrrigation(db.Model):

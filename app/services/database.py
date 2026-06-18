@@ -99,13 +99,15 @@ def manage_data(processed_data, data_type):
         data_dict = processed_data.to_dict(orient='records')
         new_data = []
     
+        valid_cols = {c.key for c in model.__table__.columns}
         for item in data_dict:
             if item['id'] is None:
-                continue  
-        
-            instance = model(**item)
+                continue
+
+            filtered = {k: v for k, v in item.items() if k in valid_cols}
+            instance = model(**filtered)
             db.session.add(instance)
-            new_data.append(item)
+            new_data.append(filtered)
     
         try:
             db.session.commit()
