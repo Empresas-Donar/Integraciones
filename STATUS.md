@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 18/06/2026_
+_Actualizado: 19/06/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 18/06/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 18/06/2026 |
-| Días totales | 743 |
+| Período | 06/06/2024 → 19/06/2026 |
+| Días totales | 744 |
 | 🟢 Días OK | 518 (69%) |
-| 🟡 Días parciales | 216 (29%) |
+| 🟡 Días parciales | 217 (29%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 14,402 |
+| Total ejecuciones | 14,424 |
 
 ---
 
@@ -50,8 +50,9 @@ _Actualizado: 18/06/2026_
 | 14 | 🟡 | ⚪ | 🟢 `12 canales` `8.8°C` | — | — |
 | 15 | 🟡 | ⚪ | 🟢 `12 canales` `8.2°C` | — | — |
 | 16 | 🟡 | ⚪ | 🟢 `14 canales` `8.1°C` | — | — |
-| 17 | 🟡 | ⚪ | 🟢 `14 canales` `8.3°C` | — | — |
-| 18 | 🟡 | ⚪ | 🟢 `14 canales` `7.9°C` | — | — |
+| 17 | 🟡 | ⚪ | 🟢 `14 canales` `8.3°C` | 💧 | — |
+| 18 | 🟡 | 🟡 `9/11` | 🟢 `14 canales` `10.4°C` | 💧 | — |
+| 19 | 🟡 | 🟡 `11/11` | 🟢 `13 canales` `3.8°C` | — | — |
 
 ### Mayo 2026
 
