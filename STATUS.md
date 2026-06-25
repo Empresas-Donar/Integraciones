@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 24/06/2026_
+_Actualizado: 25/06/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 24/06/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 24/06/2026 |
-| Días totales | 749 |
-| 🟢 Días OK | 523 (69%) |
+| Período | 06/06/2024 → 25/06/2026 |
+| Días totales | 750 |
+| 🟢 Días OK | 524 (69%) |
 | 🟡 Días parciales | 217 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 14,542 |
+| Total ejecuciones | 14,566 |
 
 ---
 
@@ -57,7 +57,8 @@ _Actualizado: 24/06/2026_
 | 21 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `7.3°C` | 💧 | — |
 | 22 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `4.5°C` | 💧 | — |
 | 23 | 🟢 | 🟢 `24/24` | 🟢 `15 canales` `4.3°C` | — | — |
-| 24 | 🟡 | 🟡 `9/9` | 🟢 `14 canales` `1.7°C` | — | — |
+| 24 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `5.3°C` | 💧 | — |
+| 25 | 🟡 | 🟡 `9/9` | 🟢 `13 canales` `-0.1°C` | — | — |
 
 ### Mayo 2026
 
