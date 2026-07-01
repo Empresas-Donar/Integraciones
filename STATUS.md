@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 30/06/2026_
+_Actualizado: 01/07/2026_
 
 ## Leyenda
 
@@ -19,16 +19,22 @@ _Actualizado: 30/06/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 30/06/2026 |
-| Días totales | 755 |
-| 🟢 Días OK | 529 (70%) |
+| Período | 06/06/2024 → 01/07/2026 |
+| Días totales | 756 |
+| 🟢 Días OK | 530 (70%) |
 | 🟡 Días parciales | 217 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 14,686 |
+| Total ejecuciones | 14,711 |
 
 ---
 
 ## Calendario por mes
+
+### Julio 2026
+
+| Día | Sistema | Wiseconn | Ubibot | Riego Zuñiga | Riego Isla Maipo |
+|-----|---------|----------|--------|--------------|-----------------|
+| 01 | 🟡 | 🟡 `10/10` | 🟢 `12 canales` `-0.7°C` | — | — |
 
 ### Junio 2026
 
@@ -63,7 +69,7 @@ _Actualizado: 30/06/2026_
 | 27 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `6.4°C` | 💧 | — |
 | 28 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `4.6°C` | 💧 | — |
 | 29 | 🟢 | 🟢 `24/24` | 🟢 `13 canales` `4.4°C` | 💧 | — |
-| 30 | 🟡 | 🟡 `9/9` | 🟢 `12 canales` `-1.4°C` | — | — |
+| 30 | 🟢 | 🟢 `24/24` | 🟢 `12 canales` `5.0°C` | 💧 | — |
 
 ### Mayo 2026
 
