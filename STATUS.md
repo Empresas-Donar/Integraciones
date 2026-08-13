@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 12/08/2026_
+_Actualizado: 13/08/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 12/08/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 12/08/2026 |
-| Días totales | 798 |
-| 🟢 Días OK | 569 (71%) |
+| Período | 06/06/2024 → 13/08/2026 |
+| Días totales | 799 |
+| 🟢 Días OK | 570 (71%) |
 | 🟡 Días parciales | 220 (27%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 15,715 |
+| Total ejecuciones | 15,739 |
 
 ---
 
@@ -45,7 +45,8 @@ _Actualizado: 12/08/2026_
 | 09 | 🟢 | 🟢 `24/24` | 🟢 `15 canales` `9.0°C` | — | — |
 | 10 | 🟢 | 🟢 `24/24` | 🟢 `15 canales` `8.4°C` | — | — |
 | 11 | 🟢 | 🟢 `24/24` | 🟢 `15 canales` `9.9°C` | — | — |
-| 12 | 🟡 | 🟡 `7/7` | 🟢 `13 canales` `3.3°C` | — | — |
+| 12 | 🟢 | 🟢 `24/24` | 🟢 `14 canales` `10.2°C` | — | — |
+| 13 | 🟡 | 🟡 `7/7` | 🟢 `12 canales` `6.3°C` | — | — |
 
 ### Julio 2026
 
