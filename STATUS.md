@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 27/08/2026_
+_Actualizado: 28/08/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 27/08/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 27/08/2026 |
-| Días totales | 813 |
+| Período | 06/06/2024 → 28/08/2026 |
+| Días totales | 814 |
 | 🟢 Días OK | 570 (70%) |
-| 🟡 Días parciales | 234 (28%) |
+| 🟡 Días parciales | 235 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 16,085 |
+| Total ejecuciones | 16,110 |
 
 ---
 
@@ -57,10 +57,11 @@ _Actualizado: 27/08/2026_
 | 21 | 🟡 | 🟡 `24/24` | 🟢 `14 canales` `13.1°C` | — | — |
 | 22 | 🟡 | 🟡 `24/24` | 🟢 `13 canales` `13.4°C` | — | — |
 | 23 | 🟡 | 🟡 `24/24` | 🟢 `13 canales` `12.5°C` | — | — |
-| 24 | 🟡 | 🟡 `24/24` | 🟢 `12 canales` `11.9°C` | — | — |
-| 25 | 🟡 | 🟡 `24/24` | 🟢 `12 canales` `13.2°C` | — | — |
-| 26 | 🟡 | 🟡 `24/24` | 🟢 `11 canales` `13.1°C` | — | — |
-| 27 | 🟡 | 🟡 `17/17` | 🟢 `11 canales` `11.3°C` | — | — |
+| 24 | 🟡 | 🟡 `24/24` | 🟢 `13 canales` `11.9°C` | — | — |
+| 25 | 🟡 | 🟡 `24/24` | 🟢 `13 canales` `13.2°C` | — | — |
+| 26 | 🟡 | 🟡 `24/24` | 🟢 `12 canales` `13.2°C` | — | — |
+| 27 | 🟡 | 🟡 `24/24` | 🟢 `12 canales` `13.7°C` | — | — |
+| 28 | 🟡 | 🟡 `18/18` | 🟢 `11 canales` `9.1°C` | — | — |
 
 ### Julio 2026
 
