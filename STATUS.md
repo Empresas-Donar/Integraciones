@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 03/10/2026_
+_Actualizado: 04/10/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 03/10/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 03/10/2026 |
-| Días totales | 850 |
-| 🟢 Días OK | 599 (70%) |
+| Período | 06/06/2024 → 04/10/2026 |
+| Días totales | 851 |
+| 🟢 Días OK | 600 (70%) |
 | 🟡 Días parciales | 242 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 16,966 |
+| Total ejecuciones | 16,991 |
 
 ---
 
@@ -35,8 +35,9 @@ _Actualizado: 03/10/2026_
 | Día | Sistema | Wiseconn | Ubibot | Riego Zuñiga | Riego Isla Maipo |
 |-----|---------|----------|--------|--------------|-----------------|
 | 01 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `17.0°C` | 💧 | — |
-| 02 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `16.4°C` | 💧 | — |
-| 03 | 🟡 | 🟡 `11/11` | 🟢 `10 canales` `7.8°C` | — | — |
+| 02 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `16.3°C` | 💧 | — |
+| 03 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `16.0°C` | 💧 | — |
+| 04 | 🟡 | 🟡 `12/12` | 🟢 `10 canales` `9.1°C` | — | — |
 
 ### Septiembre 2026
 
