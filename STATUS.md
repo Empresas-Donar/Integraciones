@@ -1,6 +1,6 @@
 # Estado del Sistema — Historial Completo
 
-_Actualizado: 19/10/2026_
+_Actualizado: 20/10/2026_
 
 ## Leyenda
 
@@ -19,12 +19,12 @@ _Actualizado: 19/10/2026_
 
 | Métrica | Valor |
 |---------|-------|
-| Período | 06/06/2024 → 19/10/2026 |
-| Días totales | 866 |
-| 🟢 Días OK | 613 (70%) |
+| Período | 06/06/2024 → 20/10/2026 |
+| Días totales | 867 |
+| 🟢 Días OK | 614 (70%) |
 | 🟡 Días parciales | 244 (28%) |
 | 🔴 Días sin datos | 0 (0%) |
-| Total ejecuciones | 17,351 |
+| Total ejecuciones | 17,374 |
 
 ---
 
@@ -50,9 +50,10 @@ _Actualizado: 19/10/2026_
 | 14 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `15.1°C` | — | — |
 | 15 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `15.5°C` | 💧 | — |
 | 16 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `16.1°C` | 💧 | — |
-| 17 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `19.2°C` | 💧 | — |
-| 18 | 🟢 | 🟢 `24/24` | 🟢 `10 canales` `17.4°C` | — | — |
-| 19 | 🟡 | 🟡 `12/12` | 🟢 `10 canales` `13.3°C` | — | — |
+| 17 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `19.1°C` | 💧 | — |
+| 18 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `17.5°C` | — | — |
+| 19 | 🟢 | 🟢 `24/24` | 🟢 `11 canales` `19.3°C` | 💧 | — |
+| 20 | 🟡 | 🟡 `11/11` | 🟢 `11 canales` `12.8°C` | — | — |
 
 ### Septiembre 2026
 
