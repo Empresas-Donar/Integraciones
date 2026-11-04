@@ -95,35 +95,6 @@ jobs:
             --set-env-vars "ENV=production,TZ=America/Santiago" \
             --command "python,refresh_chill_portions.py"
 
-      - name: Schedule chill portions at 03:00 Santiago
-        run: |
-          URI="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.CHILL_JOB_NAME }}:run"
-          SA=$(gcloud scheduler jobs describe integraciones-hourly \
-            --location=southamerica-east1 \
-            --project="${{ env.PROJECT_ID }}" \
-            --format='value(httpTarget.oauthToken.serviceAccountEmail)')
-          if gcloud scheduler jobs describe integraciones-chill-portions \
-              --location=southamerica-east1 \
-              --project="${{ env.PROJECT_ID }}" >/dev/null 2>&1; then
-            gcloud scheduler jobs update http integraciones-chill-portions \
-              --location=southamerica-east1 \
-              --project="${{ env.PROJECT_ID }}" \
-              --schedule="0 3 * * *" \
-              --time-zone="America/Santiago" \
-              --uri="$URI" \
-              --http-method=POST \
-              --oauth-service-account-email="$SA"
-          else
-            gcloud scheduler jobs create http integraciones-chill-portions \
-              --location=southamerica-east1 \
-              --project="${{ env.PROJECT_ID }}" \
-              --schedule="0 3 * * *" \
-              --time-zone="America/Santiago" \
-              --uri="$URI" \
-              --http-method=POST \
-              --oauth-service-account-email="$SA"
-          fi
-
       - name: Output Job URLs
         run: |
           echo "Jobs deployed successfully!"
