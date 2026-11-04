@@ -1274,7 +1274,7 @@ GROUP BY date ORDER BY date;
 
 La temporada parte el **1 de enero** de cada año calendario (no el 1/mayo como HF y Utah).
 
-Se actualiza automáticamente con `refresh_ubi_chill_portions()` en cada sync de Ubibot.
+Se actualiza una vez por noche (03:00 America/Santiago) con `refresh_chill_portions.py`. No corre en el sync horario: el recálculo reescribe el año completo y deja la base inutilizable para reportes.
 
 **Registros:** ~250.700 | **Años disponibles:** `2024`, `2025`, `2026`
 

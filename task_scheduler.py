@@ -1,6 +1,7 @@
 import logging
 import subprocess
 from apscheduler.schedulers.background import BackgroundScheduler
+import pytz
 import time
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler()])
@@ -12,6 +13,13 @@ def scheduled_job():
     logging.info(f"Salida de run.py: {result.stdout}")
     if result.stderr:
         logging.error(f"Errores de run.py: {result.stderr}")
+
+def scheduled_chill_portions():
+    logging.info("Ejecutando refresh_chill_portions.py...")
+    result = subprocess.run(["python3", "refresh_chill_portions.py"], capture_output=True, text=True)
+    logging.info(f"Salida de refresh_chill_portions.py: {result.stdout}")
+    if result.stderr:
+        logging.error(f"Errores de refresh_chill_portions.py: {result.stderr}")
 
 def scheduled_sendgrid_job():
     logging.info("Ejecutando daily_channel_report.py...")
@@ -46,6 +54,13 @@ sendgrid_times = [(7, '20')]
 def schedule_tasks():
     add_jobs(scheduler, scheduled_job, scheduled_times)
     add_jobs(scheduler, scheduled_sendgrid_job, sendgrid_times)
+    scheduler.add_job(
+        scheduled_chill_portions,
+        "cron",
+        hour=3,
+        minute=0,
+        timezone=pytz.timezone("America/Santiago"),
+    )
     scheduler.add_job(scheduled_weekly_report, 'cron', day_of_week='mon', hour=8, minute=0)
     scheduler.add_job(scheduled_monthly_report, 'cron', day=1, hour=8, minute=0)
 

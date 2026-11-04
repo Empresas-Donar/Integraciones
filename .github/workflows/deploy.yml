@@ -11,6 +11,7 @@ env:
   JOB_NAME: integraciones-job
   ALERTS_JOB_NAME: integraciones-alerts
   WEEKLY_REPORT_JOB_NAME: integraciones-weekly-report
+  CHILL_JOB_NAME: integraciones-chill-portions
 
 jobs:
   deploy:
@@ -81,6 +82,47 @@ jobs:
             --set-env-vars "ENV=production,TZ=America/Santiago" \
             --command "python,sensor_status_report.py,--period,weekly"
 
+      - name: Deploy nightly chill portions job
+        run: |
+          gcloud run jobs deploy ${{ env.CHILL_JOB_NAME }} \
+            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/integraciones/${{ env.JOB_NAME }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 45m \
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest" \
+            --set-env-vars "ENV=production,TZ=America/Santiago" \
+            --command "python,refresh_chill_portions.py"
+
+      - name: Schedule chill portions at 03:00 Santiago
+        run: |
+          URI="https://${{ env.REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.PROJECT_ID }}/jobs/${{ env.CHILL_JOB_NAME }}:run"
+          SA=$(gcloud scheduler jobs describe integraciones-hourly \
+            --location=southamerica-east1 \
+            --project="${{ env.PROJECT_ID }}" \
+            --format='value(httpTarget.oauthToken.serviceAccountEmail)')
+          if gcloud scheduler jobs describe integraciones-chill-portions \
+              --location=southamerica-east1 \
+              --project="${{ env.PROJECT_ID }}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http integraciones-chill-portions \
+              --location=southamerica-east1 \
+              --project="${{ env.PROJECT_ID }}" \
+              --schedule="0 3 * * *" \
+              --time-zone="America/Santiago" \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="$SA"
+          else
+            gcloud scheduler jobs create http integraciones-chill-portions \
+              --location=southamerica-east1 \
+              --project="${{ env.PROJECT_ID }}" \
+              --schedule="0 3 * * *" \
+              --time-zone="America/Santiago" \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="$SA"
+          fi
 
       - name: Output Job URLs
         run: |
@@ -88,3 +130,4 @@ jobs:
           echo "Main job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.JOB_NAME }}"
           echo "Alerts job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.ALERTS_JOB_NAME }}"
           echo "Weekly report job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.WEEKLY_REPORT_JOB_NAME }}"
+          echo "Chill portions job: https://console.cloud.google.com/run/jobs/details/${{ env.REGION }}/${{ env.CHILL_JOB_NAME }}"
